@@ -7,13 +7,14 @@
 #define private static
 
 private HQC_VECTOR(HButton) _btnList;
+private HScene _pendingScene = NULL;
 
 private void _OnBtnGameClick() { 
-    Scene_Change(SC_GAME);
+    _pendingScene = SC_GAME;
 }
 
 private void _OnBtnTestClick() { 
-    Scene_Change(SC_TEST);
+    _pendingScene = SC_TEST;
 }
 
 private void _OnBtnQuitClick() {  
@@ -22,6 +23,7 @@ private void _OnBtnQuitClick() {
 
 private void _Load() {
     _btnList = HQC_Container_CreateVector(sizeof(HButton));
+    _pendingScene = NULL;
 
     HQC_Log("SceneMenu: Creating buttons...");
 
@@ -64,6 +66,11 @@ private void _Update() {
     for (int i = 0; i < count; i++) {
         HButton* btn = HQC_Container_VectorGet(_btnList, i);
         Button_Update(*btn);
+    }
+
+    if (_pendingScene) {
+        Scene_Change(_pendingScene);
+        _pendingScene = NULL;
     }
 }
 

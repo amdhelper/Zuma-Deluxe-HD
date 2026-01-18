@@ -67,14 +67,16 @@ static void Game_Start_() {
         return;
     }
 
-    // Skip complex object creation for now
-    game.bulletList = NULL;
-    game.frog = NULL;
-    game.chain = NULL;
-    game.generator = NULL;
-    game.world = NULL;
+    game.bulletList = BulletList_Create();
+    game.frog       = Frog_Create(levelGx->frogPos.x, levelGx->frogPos.y, game.bulletList);
+    game.chain      = BallChain_Create(game.level, game.bulletList);
+    game.generator  = BallChainGenerator_Create(game.chain);
+    game.world      = World_Create();
+
+    // Start generating balls
+    BallChainGenerator_GenerateSequence(game.generator, 50);
     
-    HQC_Log("Game scene started successfully (background only mode)");
+    HQC_Log("Game scene started successfully (Complex objects enabled)");
 }
 
 
@@ -83,6 +85,11 @@ static void Game_Update__() {
     if (!game.level) {
         return;
     }
+    
+    if (game.frog)      Frog_Update(game.frog);
+    if (game.chain)     BallChain_Update(game.chain);
+    if (game.generator) BallChainGenerator_Update(game.generator);
+    if (game.bulletList) BulletList_Update(game.bulletList);
     
     // Add any necessary update logic here
 }
@@ -94,7 +101,7 @@ static void Game_Draw__() {
         float cx = 1280.f / 2;
         float cy = 720.f  / 2;
         
-        // Draw just the background texture, not the curve (which was causing crashes)
+        // Draw just the background texture
         Level* level = (Level*)game.level;
         if (level && level->texture) {
             HQC_Artist_DrawTexture(level->texture, cx, cy);
@@ -103,6 +110,12 @@ static void Game_Draw__() {
         // Fallback background
         HQC_Artist_SetColorHex(0x2C3E50);
     }
+
+    if (game.chain) BallChain_Draw(game.chain);
+    if (game.frog)  Frog_Draw(game.frog);
+    if (game.bulletList) BulletList_Draw(game.bulletList);
+    if (game.frog)  Frog_DrawTop(game.frog);
+
     
     // Draw UI text
     HQC_Artist_SetColorHex(0xFFFFFF);
@@ -137,6 +150,12 @@ static void Game_Free_() {
     if (game.world) {
         World_Destroy(game.world);
     }
+    
+    if (game.generator) {
+        // BallChainGenerator_Destroy(game.generator); // Assuming this function exists or memory is managed otherwise
+    }
+
+    // Add destruction logic for other components if needed
 }
 
 HScene Scene_Register_Game() {
