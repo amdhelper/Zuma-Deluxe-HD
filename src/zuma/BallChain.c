@@ -383,6 +383,10 @@ static Ball* Ball_Update__(Ball* ball) {
             // Momentum transfer or stop?
             // Usually if rolling back, it stops upon collision and becomes glued.
             ball->spd = ball->prev->spd;
+
+            if (ball->prev->color == ball->color) {
+                return BallChain_ExplodeBalls(ball);
+            }
         }
 
         if (ball->spd < 0.0f && Ball_IsCollidingBack__(ball, 0)) {

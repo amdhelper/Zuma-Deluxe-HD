@@ -276,6 +276,28 @@ typedef struct Font {
 } Font;
 
 
+HQC_Texture HQC_Artist_CreateTextTexture(HQC_Font hfont, const char* text, uint32_t color) {
+    Font* font = (Font*)hfont;
+    if (font->ttf == NULL) return NULL;
+
+    HQC_Color c;
+    c.R = (color  & C_RED     )  >> 16;
+    c.G = (color  & C_GREEN   )  >> 8;
+    c.B = (color  & C_BLUE    );
+    c.A = (~color & 0xFF000000)  >> 24;
+    
+    SDL_Color sdlColor = { c.R, c.G, c.B, c.A };
+
+    TTF_SetFontWrappedAlign(font->ttf, TTF_WRAPPED_ALIGN_CENTER);
+    SDL_Surface* surface = TTF_RenderText_Solid_Wrapped(font->ttf, text, sdlColor, 0);
+    if (!surface) return NULL;
+
+    SDL_Texture* texture = SDL_CreateTextureFromSurface(graphics.render, surface);
+    SDL_FreeSurface(surface);
+    
+    return texture;
+}
+
 HQC_Font HQC_Font_LoadTrueType(const char* filepath, int size) {
     Font* font = HQC_Memory_Allocate(sizeof(*font));
 

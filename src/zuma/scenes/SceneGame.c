@@ -30,6 +30,10 @@ struct {
     HBallChainGenerator generator;
 
     World* world;
+    
+    HQC_Texture texUI_Working;
+    HQC_Texture texUI_Menu;
+    HQC_Texture texUI_LevelName;
 } game;
 
 static bool levelComplete = false;
@@ -83,6 +87,16 @@ static void Game_Start_() {
 
     // Start generating balls
     BallChainGenerator_GenerateSequence(game.generator, 50);
+    
+    game.texUI_Working = HQC_Artist_CreateTextTexture(Store_GetFontByID(0), "Game Scene - Working!", 0xFFFFFF);
+    game.texUI_Menu    = HQC_Artist_CreateTextTexture(Store_GetFontByID(0), "Press M to return to menu", 0xFFFFFF);
+    game.texUI_LevelName = NULL;
+    if (game.level) {
+        const char* levelName = Level_GetDisplayName(game.level);
+        if (levelName) {
+            game.texUI_LevelName = HQC_Artist_CreateTextTexture(Store_GetFontByID(0), levelName, 0xFFFFFF);
+        }
+    }
     
     HQC_Log("Game scene started successfully (Complex objects enabled)");
 }
@@ -152,32 +166,9 @@ static void Game_Draw__() {
     }
     
     // Draw UI text
-    HQC_Artist_SetColorHex(0xFFFFFF);
-    HQC_Font font = Store_GetFontByID(0);
-    if (font) {
-        HQC_Artist_DrawText(
-            font, 
-            "Game Scene - Working!", 
-            640, 100
-        );
-        
-        HQC_Artist_DrawText(
-            font, 
-            "Press M to return to menu", 
-            640, 650
-        );
-        
-        if (game.level) {
-            const char* levelName = Level_GetDisplayName(game.level);
-            if (levelName) {
-                HQC_Artist_DrawText(
-                    font, 
-                    levelName, 
-                    640, 140
-                );
-            }
-        }
-    }
+    if (game.texUI_Working) HQC_Artist_DrawTexture(game.texUI_Working, 640, 100);
+    if (game.texUI_Menu)    HQC_Artist_DrawTexture(game.texUI_Menu, 640, 650);
+    if (game.texUI_LevelName) HQC_Artist_DrawTexture(game.texUI_LevelName, 640, 140);
 }
 
 static void Game_Free_() {
@@ -205,6 +196,10 @@ static void Game_Free_() {
         World_Destroy(game.world);
         game.world = NULL;
     }
+    
+    if (game.texUI_Working) { HQC_Artist_FreeTexture(game.texUI_Working); game.texUI_Working = NULL; }
+    if (game.texUI_Menu) { HQC_Artist_FreeTexture(game.texUI_Menu); game.texUI_Menu = NULL; }
+    if (game.texUI_LevelName) { HQC_Artist_FreeTexture(game.texUI_LevelName); game.texUI_LevelName = NULL; }
 }
 
 HScene Scene_Register_Game() {

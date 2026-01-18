@@ -120,6 +120,8 @@ void HQC_Artist_Display();
 
 HQC_Font HQC_Font_LoadTrueType(const char* filepath, int size);
 
+HQC_Texture HQC_Artist_CreateTextTexture(HQC_Font hfont, const char* text, uint32_t color);
+
 void HQC_Artist_SetFontOutline(HQC_Font hfont, int outlineSize);
 void HQC_Artist_DrawText(HQC_Font hfont, const char* text, float x, float y);
 void HQC_Artist_DrawTextF(HQC_Font hfont, float x, float y, const char* format, ...);
