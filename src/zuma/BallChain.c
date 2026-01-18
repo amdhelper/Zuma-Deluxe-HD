@@ -412,8 +412,6 @@ static void Ball_Draw__(Ball* ball) {
         HQC_Artist_DrawSetAlpha(1);
         HQC_Artist_DrawSetAngle(0);
     }
-
-    HQC_Artist_DrawTextF(Store_GetFontByID(FONT_CANCUN_8), pos.x, pos.y, "%p", ball);
 }
 
 
