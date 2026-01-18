@@ -23,9 +23,12 @@ size_t HQC_StringLength(const char* src) {
 
 
 const char*  HQC_StringClone(const char* src) {
-    size_t size = HQC_StringLength(src);
+    size_t size = HQC_StringSize(src);
 
-    return (const char*)HQC_Memory_Allocate(size);
+    char* dst = (char*)HQC_Memory_Allocate(size);
+    for (size_t i = 0; i < size; i++) dst[i] = src[i];
+    
+    return (const char*)dst;
 }
 
 

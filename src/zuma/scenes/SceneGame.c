@@ -5,6 +5,7 @@
 #include "../BallChain.h"
 #include "../FloatingText.h"
 #include "../Statistics.h"
+#include "../LevelMgr.h"
 
 #include "../ecs/World.h"
 
@@ -44,31 +45,32 @@ static void Game_Start_() {
     levelComplete = false;
     levelCompleteTimer = 0;
     
-    // Create a simple level with just the background
-    LevelSettings levelSettings;
-    levelSettings.id = "test";
+    // Get current level data from manager
+    LevelSettings* levelSettings = LevelMgr_GetCurrentSettings();
+    LevelGraphics* levelGx = LevelMgr_GetCurrentGraphics();
 
-    LevelGraphics* levelGx = HQC_Memory_Allocate(sizeof(*levelGx));
-    if (!levelGx) {
-        HQC_Log("Failed to allocate memory for level graphics");
+    if (!levelSettings || !levelGx) {
+        HQC_Log("Failed to get level data from LevelMgr. Using fallback/hardcoded.");
+        
+        // Fallback or Error
+        // Revert to hardcoded for safety if LevelMgr fails or is empty?
+        // Or just fail.
+        
+        // Let's keep the hardcoded as a fallback for now if Mgr returns NULL
+        // But Mgr should work if xml is loaded.
+        // If fail, return to menu.
         Scene_Change(SC_MENU);
         return;
     }
     
-    levelGx->dispName            = "Test Level";
-    levelGx->coinsPosList        = HQC_Container_CreateVector(sizeof(v2f_t));
-    levelGx->frogPos.x           = 640.0f;
-    levelGx->frogPos.y           = 360.0f;
-    levelGx->id                  = "longrange";
-    levelGx->textureFile         = "levels/longrange/longrange.jpg";
-    levelGx->textureTopLayerFile = NULL;
-    levelGx->curveAFile          = "levels/longrange/longrange.dat";
-    levelGx->curveBFile          = NULL;                                        
+    // Ensure coins pos list is initialized if not (LevelMgr just zeroed it)
+    if (!levelGx->coinsPosList) {
+         levelGx->coinsPosList = HQC_Container_CreateVector(sizeof(v2f_t));
+    }
 
-    game.level = Level_Load(&levelSettings, levelGx);
+    game.level = Level_Load(levelSettings, levelGx);
     if (!game.level) {
         HQC_Log("Failed to load level, returning to menu");
-        HQC_Memory_Free(levelGx);
         Scene_Change(SC_MENU);
         return;
     }
@@ -108,8 +110,15 @@ static void Game_Update__() {
     if (levelComplete) {
         levelCompleteTimer--;
         if (levelCompleteTimer <= 0) {
-            Scene_Change(SC_MENU);
+            if (LevelMgr_AdvanceLevel()) {
+                HQC_Log("Advancing to next level...");
+                Scene_Change(SC_GAME);
+            } else {
+                HQC_Log("Game Complete! Returning to menu.");
+                Scene_Change(SC_MENU);
+            }
         }
+        return;
     }
     
     // Add any necessary update logic here

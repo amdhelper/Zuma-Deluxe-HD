@@ -5,6 +5,7 @@
 #include "zuma/ResourceStore.h"
 #include "zuma/Scene.h" 
 #include "zuma/scenes/Index.h"
+#include "zuma/LevelMgr.h"
 
 // Forward declaration for minimal scene
 HScene Scene_Register_Minimal();
@@ -67,8 +68,8 @@ static int _LoadResources(void) {
     // if (!Engine_MusicLoad(fileMusic))
     //     return 7;
 
-    // if (!LevelMgr_LoadLevels("levels.xml"))
-    //     return 8;
+    if (!LevelMgr_LoadLevels("levels/levels.xml"))
+        return 8;
 }
 
 
@@ -158,6 +159,7 @@ int ApplicationZuma_Start(void) {
         WINDOW_WIDTH, WINDOW_HEIGHT
     );
 
+    LevelMgr_Init();
     _LoadResources();
     // _ShowStartupImage();
 

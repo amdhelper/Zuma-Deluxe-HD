@@ -72,6 +72,8 @@ add_executable(
         src/zuma/FloatingText.c
         src/zuma/Statistics.c
         src/zuma/Statistics.h
+        src/zuma/LevelMgr.c
+        src/zuma/LevelMgr.h
         src/zuma/ecs/World.h
         src/zuma/ecs/System.h
         src/zuma/ecs/World.c
