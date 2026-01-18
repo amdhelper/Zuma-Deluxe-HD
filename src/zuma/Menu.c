@@ -32,15 +32,27 @@ typedef struct Button {
 static void _Button_UpdateRect(HButton hbutton) {
     Button* btn = (Button*)hbutton;
 
-    irect_t rect    = HQC_Sprite_GetRect(btn->spr);
-    btn->size.x   = rect.width;
-    btn->size.y   = rect.height;
+    if (!btn->spr) {
+        // Set default size if sprite is invalid
+        btn->size.x = 180;
+        btn->size.y = 72;
+        HQC_Log("Button_UpdateRect: Invalid sprite, using default size");
+        return;
+    }
+
+    irect_t rect = HQC_Sprite_GetRect(btn->spr);
+    btn->size.x = rect.width;
+    btn->size.y = rect.height;
 }
 
 static Button* _Btn(HButton hbutton) { return (Button*)hbutton; }
 
 HButton Button_Create(float x, float y) {
     Button* btn = HQC_Memory_Allocate(sizeof(*btn));
+    if (!btn) {
+        HQC_Log("Button_Create: Failed to allocate memory");
+        return NULL;
+    }
 
     btn->pos.x      = x;
     btn->pos.y      = y;
@@ -52,15 +64,23 @@ HButton Button_Create(float x, float y) {
     btn->sndHover   = NULL;
     btn->sndPressed = Store_GetSoundByID(SND_BUTTON1);
 
+    HQC_Log("Button_Create: Loading sprites...");
     btn->spr        = Store_GetSpriteByID(SPR_MENU_BUTTON);
     btn->sprHover   = Store_GetSpriteByID(SPR_MENU_BUTTON_HOVER);
     btn->sprPressed = Store_GetSpriteByID(SPR_MENU_BUTTON_PRESSED);
+
+    if (!btn->spr) {
+        HQC_Log("Button_Create: Failed to load main sprite (ID: %d)", SPR_MENU_BUTTON);
+    }
 
     btn->onClick    = NULL;
 
     btn->scale      = 1;
 
     _Button_UpdateRect(btn);
+
+    HQC_Log("Button_Create: Button created at (%.1f, %.1f) with size (%d, %d)", 
+            x, y, btn->size.x, btn->size.y);
 
     return btn;
 }
@@ -109,10 +129,20 @@ void Button_SetScale(HButton hbutton, int scale) {
 }
 
 static int _Button_GetSlice(Button* btn) {
+    if (!btn || btn->size.x <= 0) {
+        HQC_Log("Button_GetSlice: Invalid button or size");
+        return 60; // Default slice size
+    }
     return btn->size.x / 3;
 }
 
 static irect_t _Button_GetRect(Button* btn) {
+    if (!btn) {
+        HQC_Log("Button_GetRect: NULL button");
+        irect_t defaultRect = {0, 0, 180, 72};
+        return defaultRect;
+    }
+    
     int slice = _Button_GetSlice(btn);
 
     int rx = ((slice * (2+btn->scale)) / 2);
@@ -129,40 +159,48 @@ static irect_t _Button_GetRect(Button* btn) {
 }
 
 void Button_Update(HButton hbutton) {
+    if (!hbutton) {
+        return;
+    }
+    
     Button* btn = _Btn(hbutton);
-
-    v2i_t mpos = HQC_Input_MouseGetPosition();
-
-    irect_t rect = _Button_GetRect(btn);
-
-    if ((mpos.x > rect.x) && (mpos.y > rect.y) && 
-        (mpos.x < (rect.x+rect.width)) && (mpos.y < (rect.y+rect.height))
-    ) {
-        if (HQC_Input_MouseLeftPressed()) {
-            if (btn->state != BTN_PRESSED) {
-                btn->state = BTN_PRESSED;
-
-                if (btn->sndPressed)
-                    HQC_DJ_PlaySound(btn->sndPressed);
-            } else {
-                // btn->onClick ? btn->onClick() : NULL;
-            }
-        } else {
-            if (btn->state == BTN_PRESSED && btn->onClick != NULL) {
-                btn->onClick();
-            }
-
-            if (btn->state != BTN_HOVERED && btn->sndHover != NULL)
-                HQC_DJ_PlaySound(btn->sndHover);
-
-
-            btn->state = BTN_HOVERED;
-        }
-
+    if (!btn || btn->size.x <= 0 || btn->size.y <= 0) {
         return;
     }
 
-    btn->state = BTN_IDLE;
+    // Get mouse position
+    v2i_t mpos = HQC_Input_MouseGetPosition();
+    irect_t rect = _Button_GetRect(btn);
+
+    bool mouseInside = (mpos.x > rect.x) && (mpos.y > rect.y) && 
+                      (mpos.x < (rect.x+rect.width)) && (mpos.y < (rect.y+rect.height));
+
+    if (mouseInside) {
+        bool mouseDown = HQC_Input_MouseLeft();
+        bool mousePressed = HQC_Input_MouseLeftPressed();
+        
+        if (mousePressed) {
+            // Mouse just pressed down
+            btn->state = BTN_PRESSED;
+            if (btn->sndPressed)
+                HQC_DJ_PlaySound(btn->sndPressed);
+        } else if (btn->state == BTN_PRESSED && !mouseDown) {
+            // Mouse was pressed and now released - trigger click
+            if (btn->onClick != NULL) {
+                HQC_Log("Button clicked! Executing callback...");
+                btn->onClick();
+            }
+            btn->state = BTN_HOVERED;
+        } else if (btn->state != BTN_PRESSED) {
+            // Mouse hovering
+            if (btn->state != BTN_HOVERED && btn->sndHover != NULL)
+                HQC_DJ_PlaySound(btn->sndHover);
+            btn->state = BTN_HOVERED;
+        }
+    } else {
+        // Mouse outside button
+        btn->state = BTN_IDLE;
+    }
 }
 
 

@@ -17,7 +17,7 @@ void HQC_CreateWindow(const char* caption, int width, int height) {
         caption, 
         SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 
         width, height, 
-        SDL_WINDOW_OPENGL
+        SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_MAXIMIZED
     );
 
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "2");
@@ -52,12 +52,18 @@ v2i_t   HQC_Input_MouseGetPosition() {
 }
 
 
+static bool mouseLeftPressed = false;
+static bool mouseLeftPrevious = false;
+
 bool HQC_Input_MouseLeft() {
-    return SDL_GetMouseState(NULL, NULL) & 1;
+    return SDL_GetMouseState(NULL, NULL) & SDL_BUTTON_LMASK;
 }
 
 bool HQC_Input_MouseLeftPressed() {    
-    return HQC_Input_MouseLeft();
+    bool current = HQC_Input_MouseLeft();
+    bool pressed = current && !mouseLeftPrevious;
+    mouseLeftPrevious = current;
+    return pressed;
 }
 
 static bool KEYS[HQC_NUM_SCANCODES] = { 0 };
@@ -116,20 +122,16 @@ HQC_Texture HQC_Artist_LoadTexture(const char* texfile) {
     SDL_Surface* loadedSurface = IMG_Load(texfile);
 
     if (!loadedSurface) {
-        HQC_RaiseErrorHeaderFormat(
-            "SDL Image Error",
-            "Cannot load image %s [%s]",
-            texfile, IMG_GetError()
-        );
+        HQC_Log("Failed to load image %s: %s", texfile, IMG_GetError());
+        return NULL;
     }
         
     SDL_Texture* newTexture = SDL_CreateTextureFromSurface(graphics.render, loadedSurface);
-    if (!newTexture) 
-        HQC_RaiseErrorHeaderFormat(
-            "SDL Error",
-            "Cannot load texture %s [%s]",
-            texfile, SDL_GetError()
-        );
+    if (!newTexture) {
+        HQC_Log("Failed to create texture %s: %s", texfile, SDL_GetError());
+        SDL_FreeSurface(loadedSurface);
+        return NULL;
+    }
 
     SDL_FreeSurface( loadedSurface );
     

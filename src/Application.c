@@ -6,8 +6,13 @@
 #include "zuma/Scene.h" 
 #include "zuma/scenes/Index.h"
 
+// Forward declaration for minimal scene
+HScene Scene_Register_Minimal();
+
 HScene SC_GAME;
 HScene SC_TEST;
+HScene SC_MENU;
+HScene SC_MINIMAL;
 
 #include <stdlib.h>
 
@@ -86,6 +91,35 @@ static void _HandleEvents(void) {
                 break;
         }
     }
+    
+    // Add keyboard shortcuts for scene switching
+    static bool key1Pressed = false;
+    static bool key2Pressed = false;
+    static bool keyMPressed = false;
+    
+    bool key1Current = HQC_Input_IsKeyDown(HQC_KEY_1);
+    bool key2Current = HQC_Input_IsKeyDown(HQC_KEY_2);
+    bool keyMCurrent = HQC_Input_IsKeyDown(HQC_KEY_M);
+    
+    if (key1Current && !key1Pressed) {
+        HQC_Log("Switching to game scene");
+        Scene_Change(SC_GAME);
+    }
+    if (key2Current && !key2Pressed) {
+        HQC_Log("Switching to test scene");
+        Scene_Change(SC_TEST);
+    }
+    if (keyMCurrent && !keyMPressed) {
+        HQC_Log("Switching to menu scene");
+        Scene_Change(SC_MENU);
+    }
+    if (HQC_Input_IsKeyDown(HQC_KEY_ESCAPE)) {
+        exit(0);
+    }
+    
+    key1Pressed = key1Current;
+    key2Pressed = key2Current;
+    keyMPressed = keyMCurrent;
 }
 
 
@@ -95,8 +129,9 @@ static void _Start(void) {
     Store_LoadAll();
 
     Scene_RegisterAll();
-    // Game_Start();
-    Scene_Change(SC_GAME);
+    
+    HQC_Log("Application: Starting menu scene");
+    Scene_Change(SC_MENU);
 }
 
 
@@ -131,7 +166,14 @@ int ApplicationZuma_Start(void) {
     //MenuMgr_Init(&app.menuMgr, &app.curLvl, &app.curDifficulty);
     //MenuMgr_Set(&app.menuMgr, MR_MAIN);
     _Start();
+    HQC_Log("Application: Entering main loop");
+    int frameCount = 0;
     while (app.isRunning) {
+        frameCount++;
+        if (frameCount % 60 == 0) {
+            HQC_Log("Application: Frame %d", frameCount);
+        }
+        
         _HandleEvents();
 
         app.frameStart = HQC_GetTicks();

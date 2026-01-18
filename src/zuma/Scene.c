@@ -43,10 +43,18 @@ const char* Scene_GetName() {
 
 
 void Scene_Update() {
+    if (!_curScene || !_curScene->update) {
+        HQC_Log("Scene_Update: Invalid scene or update function");
+        return;
+    }
     _curScene->update();
 }
 
 
 void Scene_Draw() {
+    if (!_curScene || !_curScene->draw) {
+        HQC_Log("Scene_Draw: Invalid scene or draw function");
+        return;
+    }
     _curScene->draw();
 }

@@ -95,7 +95,11 @@ private void _LoadTextures() {
 
     for (int i = 0; i < count; i++) {
         const char* path = HQC_StringConcat("images/", _TEXTURE_FILES[i]);
+        HQC_Log("Loading texture: %s", path);
         HQC_Texture texture = HQC_Artist_LoadTexture(path);
+        if (!texture) {
+            HQC_Log("Warning: Failed to load texture %s, using NULL", path);
+        }
         HQC_Container_VectorAdd(_textureList, &texture);
     }
 
