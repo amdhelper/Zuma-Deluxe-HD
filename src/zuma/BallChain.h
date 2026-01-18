@@ -34,6 +34,8 @@ HBall BallChain_AddToStart(HBallChain hchain, BallColor color);
 HBall BallChain_InsertBeforeBall(BallColor color, HBall nextBall, float pos);
 HBall BallChain_InsertAfterBall(BallColor color, HBall prevBall, float pos);
 
+bool BallChain_IsEmpty(HBallChain hchain);
+
 void BallChain_Update(HBallChain hchain);
 void BallChain_Draw(HBallChain hchain);
 
@@ -47,3 +49,4 @@ void BallChainGenerator_GenerateSequence(HBallChainGenerator hballChainGenerator
 
 void BallChainGenerator_Stop(HBallChainGenerator hballChainGenerator);
 void BallChainGenerator_Update(HBallChainGenerator hballChainGenerator);
+bool BallChainGenerator_IsFinished(HBallChainGenerator hballChainGenerator);

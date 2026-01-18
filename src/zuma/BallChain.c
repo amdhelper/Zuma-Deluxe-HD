@@ -483,6 +483,11 @@ HBall BallChain_HasBall(HBallChain hchain, HBall hball) {
     return NULL;
 }
 
+bool BallChain_IsEmpty(HBallChain hchain) {
+    BallChain* chain = Cast__(hchain);
+    return chain->start == NULL;
+}
+
 
 void BallChain_Draw(HBallChain hchain) {
     BallChain* chain = Cast__(hchain);
@@ -513,6 +518,11 @@ HBallChainGenerator BallChainGenerator_Create(HBallChain hballChain) {
     HQC_DJ_PlaySound(Store_GetSoundByID(SND_ROLLING));
 
     return gen;
+}
+
+bool BallChainGenerator_IsFinished(HBallChainGenerator hballChainGenerator) {
+    Generator* gen = (Generator*)hballChainGenerator;
+    return gen->fastModeBallsCountdown <= 0 && !gen->fastMode;
 }
 
 

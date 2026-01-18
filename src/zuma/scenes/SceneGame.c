@@ -31,12 +31,18 @@ struct {
     World* world;
 } game;
 
+static bool levelComplete = false;
+static int levelCompleteTimer = 0;
+
 static void GoBack_() {
     Scene_Change(SC_TEST);
 }
 
 static void Game_Start_() {
     HQC_Log("Starting game scene...");
+    
+    levelComplete = false;
+    levelCompleteTimer = 0;
     
     // Create a simple level with just the background
     LevelSettings levelSettings;
@@ -91,6 +97,21 @@ static void Game_Update__() {
     if (game.generator) BallChainGenerator_Update(game.generator);
     if (game.bulletList) BulletList_Update(game.bulletList);
     
+    if (game.chain && game.generator && BallChain_IsEmpty(game.chain) && BallChainGenerator_IsFinished(game.generator)) {
+        if (!levelComplete) {
+            levelComplete = true;
+            levelCompleteTimer = 180; // 3 seconds
+            HQC_Log("Level Complete!");
+        }
+    }
+
+    if (levelComplete) {
+        levelCompleteTimer--;
+        if (levelCompleteTimer <= 0) {
+            Scene_Change(SC_MENU);
+        }
+    }
+    
     // Add any necessary update logic here
 }
 
@@ -116,6 +137,10 @@ static void Game_Draw__() {
     if (game.bulletList) BulletList_Draw(game.bulletList);
     if (game.frog)  Frog_DrawTop(game.frog);
 
+    if (levelComplete) {
+        HQC_Artist_SetColorHex(0xFFFF00);
+        HQC_Artist_DrawText(Store_GetFontByID(0), "LEVEL COMPLETE!", 640, 360);
+    }
     
     // Draw UI text
     HQC_Artist_SetColorHex(0xFFFFFF);
