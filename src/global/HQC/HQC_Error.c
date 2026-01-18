@@ -25,6 +25,9 @@ void HQC_RaiseErrorHeaderFormat(const char* header, const char* format, ...) {
     vsnprintf(msg, len + 1, format, args);
     va_end(args);
 
+    fprintf(stderr, "FATAL ERROR [%s]: %s\n", header ? header : "Fatal", msg);
+    fflush(stderr);
+
     SDL_ShowSimpleMessageBox(
         SDL_MESSAGEBOX_ERROR,
         header ? header : "Fatal",
@@ -51,4 +54,7 @@ void HQC_Log(const char* format, ...) {
 
     printf(msg);
     printf("\n");
+    fflush(stdout);
+    
+    free(msg);
 }

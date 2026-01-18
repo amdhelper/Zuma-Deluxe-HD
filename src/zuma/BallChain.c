@@ -75,6 +75,10 @@ static Ball* Ball_Destroy__(Ball* ball) {
 
     Ball* nextBall = ball->next;
 
+    if (ball->animation) {
+        HQC_Animation_Free(ball->animation);
+    }
+
     HQC_Memory_Free(ball);
 
     return nextBall;
@@ -355,10 +359,30 @@ static Ball* Ball_Update__(Ball* ball) {
         ball->pos = ball->prev->pos + 32;
         ball->spd = ball->prev->spd;
     } else {
+        // Gaps & Gravity / Magnetism Logic
+        if (ball->prev && ball->prev->color == ball->color) {
+            // Attraction: colors match, pull back
+            ball->spd -= 0.075f; 
+            if (ball->spd < -3.0f) ball->spd = -3.0f; // Cap rollback speed
+        } else {
+            // No match: Friction / Stop
+            // If ball was moving back but shouldn't (no match), stop it or slow it
+            if (ball->spd < 0) {
+                ball->spd += 0.05f;
+                if (ball->spd > 0) ball->spd = 0;
+            } else if (ball->spd > 0) {
+                ball->spd -= 0.02f;
+                if (ball->spd < 0) ball->spd = 0;
+            }
+        }
 
         if (Ball_IsCollidingBack__(ball, 0)) {
             ball->isGluedToBack = true;
             HQC_DJ_PlaySound(Store_GetSoundByID(SND_BALLCLICK1));
+            
+            // Momentum transfer or stop?
+            // Usually if rolling back, it stops upon collision and becomes glued.
+            ball->spd = ball->prev->spd;
         }
 
         if (ball->spd < 0.0f && Ball_IsCollidingBack__(ball, 0)) {
@@ -374,9 +398,9 @@ static Ball* Ball_Update__(Ball* ball) {
         }
 
         if (ball->prev->color == ball->color) {
-            ball->spd -= 0.05f;
+            // ball->spd -= 0.05f; // Handled above
         } else {
-            ball->spd = 0;
+            // ball->spd = 0; // Handled above
         }
     }
 
