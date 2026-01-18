@@ -131,7 +131,7 @@ static uint32_t Ball_GetColorUint32__(Ball* ball) {
 }
 
 // returns pointer to next ball after removing
-HBall BallChain_ExplodeBalls(HBall hstartBall) {
+HBall BallChain_ExplodeBalls(HBall hstartBall, int isChainReaction) {
     Ball* startBall = (Ball*)hstartBall;
 
     if (!startBall) return NULL;
@@ -155,7 +155,7 @@ HBall BallChain_ExplodeBalls(HBall hstartBall) {
 
     v2f_t pos = Ball_GetPositionCoords(hstartBall);
 
-    Statistics_AddExplodedBalls(count, startBall->color);
+    Statistics_AddExplodedBalls(count, startBall->color, isChainReaction);
     Statistics_BuildAndInstantiateFloatingText(pos.x, pos.y, Ball_GetColorUint32__(hstartBall));
 
     Ball* ball;
@@ -385,7 +385,7 @@ static Ball* Ball_Update__(Ball* ball) {
             ball->spd = ball->prev->spd;
 
             if (ball->prev->color == ball->color) {
-                return BallChain_ExplodeBalls(ball);
+                return BallChain_ExplodeBalls(ball, 1);
             }
         }
 
@@ -398,7 +398,7 @@ static Ball* Ball_Update__(Ball* ball) {
                 }
             }
 
-            return BallChain_ExplodeBalls(ball);
+            return BallChain_ExplodeBalls(ball, 1);
         }
 
         if (ball->prev->color == ball->color) {

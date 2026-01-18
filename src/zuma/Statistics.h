@@ -6,7 +6,7 @@
 
 void Statistics_Init();
 
-void Statistics_AddExplodedBalls(int explodedBalls, BallColor ballsColor);
+void Statistics_AddExplodedBalls(int explodedBalls, BallColor ballsColor, int isChainReaction);
 void Statistics_IncrementChain();
 void Statistics_BreakChain();
 void Statistics_AddBulletGap(float distance);

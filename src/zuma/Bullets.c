@@ -189,7 +189,7 @@ static void _Bullet_UpdateInserting(Bullet* bullet, int index) {
 
 		Ball_BulletInsertDone(bullet->insertionBall);
 
-		BallChain_ExplodeBalls(newBall);
+		BallChain_ExplodeBalls(newBall, 0);
 
 		_BulletList_DestroyBullet(bullet->bulletList, index);
 

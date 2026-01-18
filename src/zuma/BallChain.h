@@ -25,7 +25,7 @@ HBallChain Ball_GetChain(HBall ball);
 
 HBall BallChain_HasBall(HBallChain hchain, HBall hball);
 
-HBall BallChain_ExplodeBalls(HBall hstartBall);
+HBall BallChain_ExplodeBalls(HBall hstartBall, int isChainReaction);
 
 HBallChain BallChain_Create(HLevel level, HBulletList bulletList);
 HLevel BallChain_GetLevel(HBallChain hchain);

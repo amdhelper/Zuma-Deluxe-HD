@@ -11,16 +11,19 @@ typedef struct FloatingText_ {
     bool isLiving;
 } FloatingText_;
 
-static FloatingText_ floatingTextArray_[6];
+#define MAX_FLOATING_TEXT 32
+static FloatingText_ floatingTextArray_[MAX_FLOATING_TEXT];
 static int floatingTextCounter_ = 0;
 
 void FloatingTextFactory_Instantiate(float x, float y, uint32_t color, const char* format, ...) {
-    while (floatingTextArray_[floatingTextCounter_].isLiving) {
+    int attempts = 0;
+    while (floatingTextArray_[floatingTextCounter_].isLiving && attempts < MAX_FLOATING_TEXT) {
         floatingTextCounter_++;
-
-        if (floatingTextCounter_ >= 6)
+        if (floatingTextCounter_ >= MAX_FLOATING_TEXT)
             floatingTextCounter_ = 0;
+        attempts++;
     }
+    // If full, we just overwrite the slot at floatingTextCounter_ (oldest or next available)
 
     floatingTextArray_[floatingTextCounter_].isLiving = true;
     floatingTextArray_[floatingTextCounter_].x = x;
@@ -32,16 +35,20 @@ void FloatingTextFactory_Instantiate(float x, float y, uint32_t color, const cha
     va_start(args, format);
     vsnprintf(floatingTextArray_[floatingTextCounter_].text, 64, format, args);
     va_end(args);
+    
+    // Move to next slot for next time
+    floatingTextCounter_++;
+    if (floatingTextCounter_ >= MAX_FLOATING_TEXT) floatingTextCounter_ = 0;
 }
 
 void FloatingTextFactory_Init() {
-    for (int i = 0; i < 6; i++) floatingTextArray_[i].isLiving = false;
+    for (int i = 0; i < MAX_FLOATING_TEXT; i++) floatingTextArray_[i].isLiving = false;
 
     floatingTextCounter_ = 0;
 }
 
 void FloatingTextFactory_Update() {
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < MAX_FLOATING_TEXT; i++) {
         if (!floatingTextArray_[i].isLiving) continue;
 
         floatingTextArray_[i].ysp += 0.125f;
@@ -54,7 +61,7 @@ void FloatingTextFactory_Update() {
 }
 
 void FloatingTextFactory_Draw() {
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < MAX_FLOATING_TEXT; i++) {
         FloatingText_ ft = floatingTextArray_[i];
 
         if (!ft.isLiving) continue;

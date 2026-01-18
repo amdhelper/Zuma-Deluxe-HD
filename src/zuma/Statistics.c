@@ -20,10 +20,10 @@ void Statistics_Init() {
     prevBallColor = BALL_NONE;
 }
 
-void Statistics_AddExplodedBalls(int explodedBalls, BallColor ballsColor) {
+void Statistics_AddExplodedBalls(int explodedBalls, BallColor ballsColor, int isChainReaction) {
     ballsCount_ = explodedBalls;
 
-    if (ballsColor == prevBallColor) {
+    if (isChainReaction) {
         comboCount_++;
     } else {
         comboCount_ = 0;
@@ -34,7 +34,15 @@ void Statistics_AddExplodedBalls(int explodedBalls, BallColor ballsColor) {
 }
 
 void Statistics_BuildAndInstantiateFloatingText(float x, float y, uint32_t color) {
-    int points = ballsCount_ * 10 + gapPoints_ + comboCount_ * 100;
+    int points = ballsCount_ * 10 + gapPoints_;
+    
+    // Combo Bonus: e.g. 100 * ComboCount
+    if (comboCount_ > 0) {
+        points += comboCount_ * 100;
+        // Or multiplier? Usually score * multiplier.
+        // Let's do simple additive bonus + multiplier effect on base score?
+        // Let's keep it simple: Base points + Combo Bonus.
+    }
 
     bool isChainBonus = chainCount_ >= 5;
     if (isChainBonus && comboCount_ == 0) {
