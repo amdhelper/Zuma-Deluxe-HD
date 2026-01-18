@@ -2,8 +2,8 @@
 
 #include "../Scene.h"
 
-HScene SC_GAME;
-HScene SC_TEST;
+extern HScene SC_GAME;
+extern HScene SC_TEST;
 
 HScene Scene_Register_Game(); 
 HScene Scene_Register_Test();

@@ -6,6 +6,9 @@
 #include "zuma/Scene.h" 
 #include "zuma/scenes/Index.h"
 
+HScene SC_GAME;
+HScene SC_TEST;
+
 #include <stdlib.h>
 
 // #include "global/Engine.h"

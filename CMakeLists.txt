@@ -53,49 +53,16 @@ if (${isBassFxFound} STREQUAL isBassFxFound-NOTFOUND)
     find_library (isBassFxFound bass_fx NO_CACHE PATHS "${PROJECT_SOURCE_DIR}/lib/bass-fx")
 endif()
 
-include(FetchContent)
+find_package(EXPAT REQUIRED)
+find_package(SDL2 REQUIRED)
+find_package(SDL2_image REQUIRED)
 
-message("Fetching expat")
-FetchContent_Declare(
-    expat
-    GIT_REPOSITORY https://github.com/libexpat/libexpat.git
-    GIT_TAG        d8f43d6757af5ca5aae6cc185d6481f37f6c3be2
-)
-
-FetchContent_MakeAvailable(expat)
-
-set(EXPAT_BUILD_DOCS OFF)
-set(EXPAT_BUILD_TOOLS OFF)
-add_subdirectory(${expat_SOURCE_DIR}/expat ${expat_BINARY_DIR})
-
-message("Fetching sdl2")
-FetchContent_Declare(
-    sdl2
-    GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
-    GIT_TAG        SDL2
-)
-
-FetchContent_MakeAvailable(sdl2)
-
-message("Fetching sdl2 image")
-FetchContent_Declare(
-    sdl2_image
-    GIT_REPOSITORY https://github.com/libsdl-org/SDL_image.git
-    GIT_TAG        SDL2
-)
-
-set(SDL2IMAGE_SAMPLES OFF)
-FetchContent_MakeAvailable(sdl2_image)
-
-message("Fetching SDL2_ttf")
-FetchContent_Declare(
-    sdl2_ttf
-    GIT_REPOSITORY https://github.com/libsdl-org/SDL_ttf.git
-    GIT_TAG        SDL2
-)
-FetchContent_MakeAvailable(sdl2_ttf)
+add_subdirectory(external/SDL_ttf)
 
 FILE(GLOB_RECURSE SOURCES RELATIVE ${PROJECT_SOURCE_DIR} "src/*.c")
+
+set(BASS_LIB "${PROJECT_SOURCE_DIR}/lib/bass/libs/x86_64/libbass.so")
+set(BASS_FX_LIB "${PROJECT_SOURCE_DIR}/lib/bass-fx/libs/x86_64/libbass_fx.so")
 
 add_executable(
     ZumaHD
@@ -124,30 +91,26 @@ target_include_directories(
     ZumaHD PUBLIC
     "${PROJECT_BINARY_DIR}"
     "${PROJECT_SOURCE_DIR}/src"
-    "${PROJECT_SOURCE_DIR}/lib/bass"
-    "${PROJECT_SOURCE_DIR}/lib/bass-fx"
+    "${PROJECT_SOURCE_DIR}/lib/bass/c"
+    "${PROJECT_SOURCE_DIR}/lib/bass-fx/C"
 
-    "${expat_SOURCE_DIR}/expat/lib"
-    "${sdl2_SOURCE_DIR}/include"
-    "${sdl2_image_SOURCE_DIR}/include"
-    "${sdl2_ttf_SOURCE_DIR}"
-)
-
-link_directories(
-    ${PROJECT_SOURCE_DIR}/lib/bass/c
-    ${PROJECT_SOURCE_DIR}/lib/bass-fx/C
+    ${EXPAT_INCLUDE_DIRS}
+    ${SDL2_INCLUDE_DIRS}
+    ${SDL2_IMAGE_INCLUDE_DIRS}
+    "external/SDL_ttf"
 )
 
 target_link_libraries(
     ZumaHD PRIVATE
-    SDL2
-    SDL2_image
+    SDL2::SDL2
+    SDL2_image::SDL2_image
     SDL2_ttf
 
-    ${isBassFound}
-    ${isBassFxFound}
+    ${BASS_LIB}
+    ${BASS_FX_LIB}
     
-    expat
+    EXPAT::EXPAT
+    m
 )
 
 # Copy DLLs needed for runtime on Windows
