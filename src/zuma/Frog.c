@@ -208,5 +208,11 @@ void Frog_DrawTop(HFrog hfrog) {
 
 
 void Frog_Destroy(HFrog hfrog) {
-    HQC_Memory_Free(hfrog);
+    Frog* frog = _Frog(hfrog);
+    if (!frog) return;
+
+    if (frog->animBlink) HQC_Animation_Free(frog->animBlink);
+    if (frog->animNextBall) HQC_Animation_Free(frog->animNextBall);
+
+    HQC_Memory_Free(frog);
 }

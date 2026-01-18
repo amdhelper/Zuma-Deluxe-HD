@@ -519,6 +519,16 @@ void BallChain_Draw(HBallChain hchain) {
     }
 }   
 
+void BallChain_Destroy(HBallChain hchain) {
+    BallChain* chain = Cast__(hchain);
+    if (!chain) return;
+
+    while (chain->start) {
+        Ball_Destroy__(chain->start);
+    }
+    HQC_Memory_Free(chain);
+}
+
 ////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
@@ -540,6 +550,12 @@ HBallChainGenerator BallChainGenerator_Create(HBallChain hballChain) {
     HQC_DJ_PlaySound(Store_GetSoundByID(SND_ROLLING));
 
     return gen;
+}
+
+void BallChainGenerator_Destroy(HBallChainGenerator hballChainGenerator) {
+    if (hballChainGenerator) {
+        HQC_Memory_Free(hballChainGenerator);
+    }
 }
 
 bool BallChainGenerator_IsFinished(HBallChainGenerator hballChainGenerator) {

@@ -78,6 +78,7 @@ typedef struct HQC_Color {
 } HQC_Color;
 
 HQC_Texture HQC_Artist_LoadTexture(const char* texfile);
+void HQC_Artist_FreeTexture(HQC_Texture texture);
 HQC_Font    HQC_Artist_MakeFontFromTexture();
 
 void HQC_Artist_FreeFont(HQC_Font font);

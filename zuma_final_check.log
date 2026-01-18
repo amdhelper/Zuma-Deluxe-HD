@@ -1,0 +1,59 @@
+启动 Zuma HD...
+当前目录: /home/didi88ss/pj/Zuma-Deluxe-HD/build/bin
+检查资源文件...
+启动游戏...
+Starting ZumaHD...
+LevelMgr: Loaded 22 graphics, 130 settings, 13 stages
+Loading texture: images/frog.png
+Loading texture: images/gameobjects.png
+Loading texture: images/gameinterface.png
+Loading texture: images/menu.png
+Loading texture: images/thumbnails/thumb_1.jpg
+Loading texture: images/thumbnails/thumb_2.jpg
+Loading texture: images/thumbnails/thumb_3.jpg
+Loading texture: images/thumbnails/thumb_4.jpg
+Loading texture: images/thumbnails/thumb_5.jpg
+Loading texture: images/thumbnails/thumb_6.jpg
+Loading texture: images/thumbnails/thumb_7.jpg
+Loading texture: images/thumbnails/thumb_8.jpg
+Loading texture: images/thumbnails/thumb_9.jpg
+Loading texture: images/thumbnails/thumb_10.jpg
+Loading texture: images/thumbnails/thumb_11.jpg
+Loading texture: images/thumbnails/thumb_12.jpg
+Loading texture: images/thumbnails/thumb_13.jpg
+Loading texture: images/thumbnails/thumb_14.jpg
+Loading texture: images/thumbnails/thumb_15.jpg
+Loading texture: images/thumbnails/thumb_16.jpg
+Loading texture: images/thumbnails/thumb_17.jpg
+Loading texture: images/thumbnails/thumb_18.jpg
+[ResourceStore] Common textures count: 22
+[ResourceStore] Common sprite mappings count: 78
+[ResourceStore] Common animations count: 13
+[ResourceStore] Common sounds count: 38
+[ResourceStore] Common fonts count: 5
+Application: Starting menu scene
+SceneMenu: Creating buttons...
+Button_Create: Loading sprites...
+Button_Create: Button created at (640.0, 300.0) with size (180, 72)
+SceneMenu: Game button created
+Button_Create: Loading sprites...
+Button_Create: Button created at (640.0, 400.0) with size (180, 72)
+SceneMenu: Test button created
+Button_Create: Loading sprites...
+Button_Create: Button created at (640.0, 500.0) with size (180, 72)
+SceneMenu: Quit button created
+SceneMenu: Total buttons created: 3
+Application: Entering main loop
+Application: Frame 60
+Application: Frame 120
+Application: Frame 180
+Button clicked! Executing callback...
+Starting game scene...
+Loading level texture: levels/spiral/spiral.jpg
+Loading curve A: levels/spiral/spiral.dat
+Level loaded successfully
+Game scene started successfully (Complex objects enabled)
+Application: Frame 240
+Application: Frame 300
+Application: Frame 360
+Application: Frame 420

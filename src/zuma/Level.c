@@ -92,6 +92,12 @@ static Curve* _CurveLoadFromFile(const char* filepath) {
     return curve;
 }
 
+static void _CurveFree(Curve* curve) {
+    if (!curve) return;
+    HQC_Container_FreeVector(curve->dotList);
+    HQC_Memory_Free(curve);
+}
+
 //////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////
 
@@ -143,6 +149,19 @@ HLevel Level_Load(LevelSettings* settings, LevelGraphics* graphics) {
 
     HQC_Log("Level loaded successfully");
     return level;
+}
+
+void Level_Free(HLevel hlevel) {
+    Level* level = (Level*)hlevel;
+    if (!level) return;
+
+    if (level->texture) HQC_Artist_FreeTexture(level->texture);
+    if (level->textureTopLevel) HQC_Artist_FreeTexture(level->textureTopLevel);
+    
+    _CurveFree(level->curveA);
+    _CurveFree(level->curveB);
+    
+    HQC_Memory_Free(level);
 }
 
 

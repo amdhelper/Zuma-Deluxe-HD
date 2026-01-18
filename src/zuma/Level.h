@@ -37,6 +37,7 @@ typedef struct LevelSettings {
 typedef void* HLevel;
 
 HLevel Level_Load(LevelSettings* settings, LevelGraphics* graphics);
+void Level_Free(HLevel hlevel);
 const char* Level_GetDisplayName(HLevel hlevel);
 
 v2f_t Level_GetCurveCoords(HLevel hlevel, float pos);

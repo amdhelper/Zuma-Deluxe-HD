@@ -181,15 +181,30 @@ static void Game_Draw__() {
 }
 
 static void Game_Free_() {
+    if (game.generator) {
+        BallChainGenerator_Destroy(game.generator);
+        game.generator = NULL;
+    }
+    if (game.chain) {
+        BallChain_Destroy(game.chain);
+        game.chain = NULL;
+    }
+    if (game.frog) {
+        Frog_Destroy(game.frog);
+        game.frog = NULL;
+    }
+    if (game.bulletList) {
+        BulletList_Free(game.bulletList);
+        game.bulletList = NULL;
+    }
+    if (game.level) {
+        Level_Free(game.level);
+        game.level = NULL;
+    }
     if (game.world) {
         World_Destroy(game.world);
+        game.world = NULL;
     }
-    
-    if (game.generator) {
-        // BallChainGenerator_Destroy(game.generator); // Assuming this function exists or memory is managed otherwise
-    }
-
-    // Add destruction logic for other components if needed
 }
 
 HScene Scene_Register_Game() {

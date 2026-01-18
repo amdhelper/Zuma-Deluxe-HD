@@ -72,8 +72,11 @@ HBulletList BulletList_Create() {
 static void _BulletList_DestroyBullet(HBulletList bulletList, int index) {
 	BulletList* bl = (BulletList*)bulletList;
 
-	HQC_Memory_Free(bl->arr[index]);
-	bl->arr[index] = NULL;
+    if (bl->arr[index]) {
+        HQC_Animation_Free(bl->arr[index]->anim);
+        HQC_Memory_Free(bl->arr[index]);
+        bl->arr[index] = NULL;
+    }
 }
 
 static Bullet* _Bullet_CollisionBullet(Bullet* bullet) {
@@ -297,5 +300,14 @@ HBullet BulletList_GetBullet(HBulletList bulletList, int index) {
 
 
 void BulletList_Free(HBulletList bulletList) {
-	
+    BulletList* bl = (BulletList*)bulletList;
+    if (!bl) return;
+
+    for (int i = 0; i < ARR_SIZE; i++) {
+        if (bl->arr[i] != NULL) {
+            _BulletList_DestroyBullet(bulletList, i);
+        }
+    }
+    
+    HQC_Memory_Free(bl);
 }

@@ -138,6 +138,11 @@ HQC_Texture HQC_Artist_LoadTexture(const char* texfile) {
     return newTexture;
 }
 
+void HQC_Artist_FreeTexture(HQC_Texture texture) {
+    if (!texture) return;
+    SDL_DestroyTexture((SDL_Texture*)texture);
+}
+
 
 void HQC_Artist_DrawTexture(HQC_Texture texture, float x, float y) {
     if (!texture) 

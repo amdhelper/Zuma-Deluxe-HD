@@ -38,6 +38,7 @@ bool BallChain_IsEmpty(HBallChain hchain);
 
 void BallChain_Update(HBallChain hchain);
 void BallChain_Draw(HBallChain hchain);
+void BallChain_Destroy(HBallChain hchain);
 
 ////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////
@@ -45,6 +46,7 @@ void BallChain_Draw(HBallChain hchain);
 typedef void* HBallChainGenerator;
 
 HBallChainGenerator BallChainGenerator_Create(HBallChain hballChain);
+void BallChainGenerator_Destroy(HBallChainGenerator hballChainGenerator);
 void BallChainGenerator_GenerateSequence(HBallChainGenerator hballChainGenerator, size_t count);
 
 void BallChainGenerator_Stop(HBallChainGenerator hballChainGenerator);
