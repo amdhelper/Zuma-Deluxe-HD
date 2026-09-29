@@ -91,6 +91,9 @@ void HQC_Container_FreeVector(HQC_VectorContainer vector) {
     Vector* vec = _CastToVector(vector);
 
     HQC_Memory_Free(vec->elements);
+    HQC_Memory_Free(vec);      // 🔴 旧实现漏了这一步：只释放元素缓冲，
+                               // Vector 结构体本身（32 字节）每次都泄漏
+                               // （2026-09-29 ASan：7790 字节/259 处，绝大多数是它）
 
     vector = NULL;
 }

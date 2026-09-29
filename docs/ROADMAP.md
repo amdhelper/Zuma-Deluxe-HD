@@ -56,35 +56,37 @@
 
 ---
 
-## 阶段 2 — 主菜单与进度（P0，下一批要做的）
+## 阶段 2 — 主菜单与进度（2.1-2.3 ✅ 已完成；2.4-2.5 待办）
 
-### 2.1 主菜单重做（Adventure / Gauntlet / Options / Quit）
-- 现状：`SceneMenu` 只有 3 个文字按钮；`menu.png` 里 **40+ 张按钮/背景精灵已经在 ResourceStore 注册**（`SPR_MENU_MAIN_BTN_*`），只差接线
-- 目标：太阳/天空背景 + 4 个大按钮（悬停/按下三态）+ 音效；Gauntlet 与 Options 未实现前禁用置灰
-- 涉及：`src/zuma/scenes/SceneMenu.c`、`src/zuma/Menu.c`（Button 已支持三态精灵，但 `Button_Draw` 的九宫格切图要用菜单按钮的矩形）
-- 验收：`--autotest` 下用脚本点击"Adventure"能进选关界面
+### 2.1 主菜单重做 ✅
+- `SceneMenu` 现在有 Adventure / Gauntlet（未实现，置灰）/ Options / Quit 四个大按钮，
+  直接使用 `menu.png` 里注册的按钮精灵（含悬停态）+ 天空/太阳/标题背景
+- 验收：`--autotest --start-menu` 下脚本点击 Adventure 能进选关（见 `MENU_ENTER_ADVENTURE`）
 
-### 2.2 关卡选择界面
-- 按大关（13 个）列出小关，缩略图 `thumb_1..18`（已加载）+ 关卡名 + 最高分/最高分时间
-- 上一关/下一关/开始（三个按钮精灵已注册：`SPR_MENU_GAUNT_BTN_BACK/NEXT/PLAY`）
-- 验收：选中第 N 关 → `--autotest` 断言 `LEVEL_START stage=x level=y` 与所选一致
+### 2.2 关卡选择界面 ✅
+- 按大关列出关卡：**关卡预览图**（用关卡背景图，按格子缩放）+ 关卡号 + 关卡名/settings id，
+  上一关/下一关/开打按钮
+- ⚠️ 不要用 `content/images/thumbnails/thumb_1..18.jpg`：实测 18 张是**同一张 1280x720
+  近全黑图**，1:1 画会盖满屏幕（旧实现的选关界面因此整片黑）
+- 顺带修好 `StageProgression` 解析翻倍 bug（stage1 从 10 关 → 正确的 5 关）
+- 验收：`MENU_ENTER_ADVENTURE levels=5`；选关界面全屏非零像素 921600/921600
 
-### 2.3 难度选择（4 档）
-- 原版实现（v0.1.0 `Game_Init`，可在 git 历史 `c53e82e2:src/gameplay/Game.c` 查到）：
-  难度 0/1/2/3 → `ballColors` 4/5/6/6、`partTime` 70/100/120/150、`ballStartCount` 40/50/60/60
-- 目标：难度覆盖 `LevelSettings` 的对应字段（新增 `LevelMgr` 的难度覆盖层，别直接改 settings 本体）
-- 验收：`--difficulty 2` 时 `LEVEL_START` 事件的 `colors=6`
+### 2.3 难度选择（4 档）✅
+- 移植 v0.1.0 `Game_Init` 的四档预设：`ballColors` 4/5/6/6、`partTime` 70/100/120/150、
+  `ballStartCount` 40/50/60/60（难度 2 另加 `repeatChance=25`）
+- 实现为 settings 副本上的覆盖（`GameDifficulty_Apply`），不污染 LevelMgr 注册表
+- 验收：`--difficulty 2` → `LEVEL_START ... colors=6 start=60`
 
-### 2.4 进度存档
+### 2.4 进度存档 ⬜（待办）
 - 每关最高分/最高分用时 + 已解锁到第几关，落盘（建议 `~/.local/share/zumahd/progress.dat`，
-  纯文本/二进制均可；不要写进 content/ 以免污染仓库）
+  别写进 `content/` 以免污染仓库）
 - 验收：跑完一关 → 重启进程 → 选关界面显示最高分非 0
 
-### 2.5 结算界面
+### 2.5 结算界面 ⬜（待办）
 - 过关/Game Over 用菜单对话框精灵（`SPR_MENU_DIALOG_BOX_RECT_*` 九宫格）显示：
   分数 / 宝石数 / 最大连击 / 最大链式连击 / 用时（`partTime` 内绿色）/ 历史最高
-- 按钮：重试 / 下一关 / 返回菜单
-- 验收：`--autotest --levels 1` 后事件里出现结算数据且数值与 OBSERVED 一致
+- 按钮：重试 / 下一关 / 返回菜单（现在只是屏幕上几行文字 + 自动跳转）
+- 验收：`--autotest --levels 1` 结算数据与 `OBSERVED` 一致
 
 ---
 

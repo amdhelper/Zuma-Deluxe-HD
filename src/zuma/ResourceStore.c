@@ -100,6 +100,7 @@ private void _LoadTextures() {
         if (!texture) {
             HQC_Log("Warning: Failed to load texture %s, using NULL", path);
         }
+        HQC_Memory_Free((void*)path);   // HQC_StringConcat 是堆分配的（ASan 泄漏修复）
         HQC_Container_VectorAdd(_textureList, &texture);
     }
 
@@ -514,6 +515,7 @@ private void _LoadSounds() {
     for (int i = 0; i < count; i++) {
         const char* path = HQC_StringConcat("sounds/", _SOUND_FILES[i]);
         HQC_Sound sound = HQC_DJ_LoadSound(path);
+        HQC_Memory_Free((void*)path);   // HQC_StringConcat 是堆分配的（ASan 泄漏修复）
         HQC_Container_VectorAdd(_soundList, &sound);
     }
 

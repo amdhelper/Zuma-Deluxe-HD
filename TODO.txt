@@ -1,5 +1,6 @@
-
 [] Game console
+    → 已落地一部分：--autotest 无头自动测试（脚本输入/事件日志/截图取证）
+      仍缺：游戏内可交互控制台（运行时改关、召唤球、看状态）
 
 [] Multiple items for function HQC_Container_VectorAdd
 [] HQC Linked List conatiner
@@ -10,4 +11,22 @@
 [] Put hardcoded sprite mappings in Resource Store to some file format (json)
 ... [] And make parser for it
 
-[] Make Resource store part of HQC framework 
+[] Make Resource store part of HQC framework
+
+
+═══════════════════════════════════════════════════════════════════════════
+接下来的开发任务 / 进度：见 docs/ROADMAP.md（按阶段列出，每个任务带验收标准）
+  阶段 0 可验证性（自动测试）        ✅ 已完成
+  阶段 1 核心玩法闭环（胜负/分数/命/宝石/HUD/暂停/音乐）✅ 已完成
+  阶段 2 主菜单/选关/难度            ✅ 已完成（2.4 存档、2.5 结算界面待办）
+  阶段 3 玩法深度（道具球/开场收尾/GAP/音乐状态机/Gauntlet/双曲线/Cutout）⬜
+  阶段 4 工程化（ASan/CI/容器/ECS 收尾/缩放/打包）   ⬜
+═══════════════════════════════════════════════════════════════════════════
+
+构建 / 运行 / 测试：
+  cd build && cmake .. && make -j8
+  cd bin && ./ZumaHD                                        # 人工试玩
+  cd bin && ./ZumaHD --autotest --frames 30000 --levels 2   # 无头自动游玩（通关路径）
+  cd bin && ./ZumaHD --autotest --no-autoplay               # 无头（掉命路径）
+  cd bin && ./ZumaHD --autotest --start-menu                # 菜单→选关→开打链路
+  cd bin && ./ZumaHD --help                                 # 全部命令行选项
