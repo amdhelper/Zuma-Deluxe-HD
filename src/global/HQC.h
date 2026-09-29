@@ -34,6 +34,11 @@ void HQC_RaiseErrorHeaderFormat(const char* header, const char* format, ...);
 // Window
 void HQC_CreateWindow(const char* caption, int width, int height);
 
+// 全屏切换（F11 / Alt+Enter）：逻辑分辨率固定 1280x720，
+// 非 16:9 的窗口/屏幕由 SDL_RenderSetLogicalSize 自动加黑边（ROADMAP 4.5）
+void HQC_Window_ToggleFullscreen();
+bool HQC_Window_IsFullscreen();
+
 ////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////
 
@@ -50,8 +55,11 @@ bool    HQC_Input_MouseRight();
 bool    HQC_Input_MouseLeftPressed();
 bool    HQC_Input_MouseRightPressed();
 
-bool    HQC_Input_IsKeyDown(HQC_Key key);
-bool    HQC_Input_KeyPressed(HQC_Key key);
+bool HQC_Input_IsKeyDown(HQC_Key key);
+bool HQC_Input_KeyPressed(HQC_Key key);
+
+// 全屏切换快捷键（F11 / Alt+Enter）——在 Application._HandleEvents 里轮询
+bool HQC_Input_IsAltDown();
 
 // 无头/自动测试：脚本输入覆盖真实输入（enabled=false 时恢复真实设备）
 void    HQC_Input_SetScripted(bool enabled, int mouseX, int mouseY, bool leftDown, bool rightDown);

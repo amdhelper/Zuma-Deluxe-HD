@@ -28,6 +28,7 @@
 #define PANE_MAIN       0
 #define PANE_ADVENTURE  1
 #define PANE_OPTIONS    2
+#define PANE_GAUNTLET   3
 
 private struct {
     int pane;
@@ -163,10 +164,26 @@ private void _StartAdventure() {
     _SetPane(PANE_ADVENTURE);
 }
 
-private void _StartGauntlet() {
-    // Gauntlet 模式未实现（ROADMAP 阶段 3.6）—— 置灰按钮不给点
-    HQC_Log("Gauntlet mode is not implemented yet (see docs/ROADMAP.md 3.6)");
+private void _StartGauntletPane() { _SetPane(PANE_GAUNTLET); }
+
+private void _StartGauntletMode(int difficulty) {
+    // Gauntlet：无限球流 + 每周目提速（ROADMAP 3.6）
+    GameOptions_StartGauntlet(difficulty);
+
+    Statistics_Init();
+    Statistics_SetLives(gGameOptions.lives);
+
+    // 从当前选中的关卡开始（地图随机切换发生在每一目结束时）
+    LevelMgr_ClampProgress(&menu.stage, &menu.selLevel);
+    LevelMgr_SetProgress(menu.stage, menu.selLevel);
+
+    AutoTest_Event("MENU_GAUNTLET", "difficulty=%d stage=%d level=%d",
+                   difficulty, menu.stage + 1, menu.selLevel + 1);
+
+    Scene_Change(SC_GAME);
 }
+
+private void _StartGauntlet() { _StartGauntletPane(); }
 
 private void _OpenOptions() { _SetPane(PANE_OPTIONS); }
 
@@ -340,6 +357,7 @@ private void _DrawAdventurePane() {
 
     if (_ImageButton(SPR_MENU_GAUNT_BTN_PLAY, SPR_MENU_GAUNT_BTN_PLAY_HOVER, 640, 635, 1.2f)) {
         gGameOptions.difficulty = menu.difficulty;
+        gGameOptions.gauntlet   = 0;    // Adventure 模式（清掉可能残留的 Gauntlet 标记）
 
         LevelMgr_SetProgress(menu.stage, menu.selLevel);
 
@@ -354,6 +372,55 @@ private void _DrawAdventurePane() {
 
         Scene_Change(SC_GAME);
     }
+
+    HQC_Artist_SetColorHex(C_WHITE);
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Gauntlet：选难度（兔 / 鹰 / 豹 / 太阳神）→ 无限模式
+////////////////////////////////////////////////////////////////////////////////
+
+static const struct {
+    int  spr, sprHover;
+    const char* name;
+    const char* desc;
+} kGauntletModes[4] = {
+    { SPR_MENU_GAUNT_BTN_RABBIT,  SPR_MENU_GAUNT_BTN_RABBIT_HOVER,  "Rabbit",   "slower balls, 4 colors" },
+    { SPR_MENU_GAUNT_BTN_EAGLE,   SPR_MENU_GAUNT_BTN_EAGLE_HOVER,   "Eagle",    "5 colors" },
+    { SPR_MENU_GAUNT_BTN_JAGUAR,  SPR_MENU_GAUNT_BTN_JAGUAR_HOVER,  "Jaguar",   "6 colors, faster" },
+    { SPR_MENU_GAUNT_BTN_SUN_GOD, SPR_MENU_GAUNT_BTN_SUN_GOD_HOVER, "Sun God",  "6 colors, fastest" },
+};
+
+
+private void _DrawGauntletPane() {
+    HQC_Sprite screen = Store_GetSpriteByID(SPR_MENU_SCREEN_GAUNTLET);
+    if (screen) HQC_Artist_DrawSprite(screen, 640, 360);
+
+    HQC_Artist_SetColorHex(C_WHITE);
+    HQC_Artist_DrawText(Store_GetFontByID(FONT_CANCUN_13), "GAUNTLET", 640, 60);
+    HQC_Artist_DrawText(Store_GetFontByID(FONT_CANCUN_10),
+                        "endless balls, each wave is faster — choose your difficulty", 640, 96);
+
+    const int xs[2] = { 470, 810 };
+    const int ys[2] = { 250, 430 };
+
+    for (int i = 0; i < 4; i++) {
+        int x = xs[i % 2];
+        int y = ys[i / 2];
+
+        if (_ImageButton(kGauntletModes[i].spr, kGauntletModes[i].sprHover, x, y, 1.0f))
+            _StartGauntletMode(i);
+
+        HQC_Artist_SetColorHex(C_YELLOW);
+        HQC_Artist_DrawText(Store_GetFontByID(FONT_CANCUN_12), kGauntletModes[i].name, (float)x, (float)(y + 70));
+
+        HQC_Artist_SetColorHex(C_WHITE);
+        HQC_Artist_DrawText(Store_GetFontByID(FONT_CANCUN_8), kGauntletModes[i].desc, (float)x, (float)(y + 92));
+    }
+
+    if (_ImageButton(SPR_MENU_GAUNT_BTN_BACK, SPR_MENU_GAUNT_BTN_BACK_HOVER, 640, 600, 1.2f))
+        _SetPane(PANE_MAIN);
 
     HQC_Artist_SetColorHex(C_WHITE);
 }
@@ -412,6 +479,25 @@ private void _MenuAutoplay() {
 
     int f = menu.frame;
 
+    // ── Gauntlet 链路（--start-menu --gauntlet N）：点 Gauntlet → 点难度 ────
+    if (gGameOptions.gauntlet) {
+        if (f == 30) AutoTest_SetPointer(400, 480, 0, 0);       // 主菜单 Gauntlet 按钮
+        if (f == 32) AutoTest_SetPointer(400, 480, 1, 0);
+        if (f == 34) AutoTest_SetPointer(400, 480, 0, 0);
+
+        if (f == 40) AutoTest_Event("MENU_ENTER_GAUNTLET", "pane=%d (3=gauntlet)", menu.pane);
+
+        // 按难度下标点对应按钮：0/1 在第一行，2/3 在第二行
+        int idx = gGameOptions.gauntletDifficulty;
+        int bx = (idx % 2 == 0) ? 470 : 810;
+        int by = (idx / 2 == 0) ? 250 : 430;
+
+        if (f == 60) AutoTest_SetPointer(bx, by, 0, 0);
+        if (f == 62) AutoTest_SetPointer(bx, by, 1, 0);
+        if (f == 64) AutoTest_SetPointer(bx, by, 0, 0);
+        return;
+    }
+
     // 30: 悬停 Adventure，32: 点击 → 进选关；50: 悬停 Play，52: 点击 → 开打
     if (f == 30) { AutoTest_SetPointer(640, 320, 0, 0); AutoTest_Event("MENU_HOVER_ADVENTURE", ""); }
     if (f == 32) { AutoTest_SetPointer(640, 320, 1, 0); }
@@ -447,6 +533,7 @@ private void _Update() {
 private void _Draw() {
     switch (menu.pane) {
         case PANE_ADVENTURE: _DrawAdventurePane(); break;
+        case PANE_GAUNTLET:  _DrawGauntletPane();  break;
         case PANE_OPTIONS:   _DrawOptionsPane();   break;
         default:             _DrawMainPane();      break;
     }

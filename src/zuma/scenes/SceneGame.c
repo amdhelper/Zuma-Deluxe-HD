@@ -57,6 +57,15 @@ struct {
     int   pauseAction;        // 1=继续 2=重开 3=返回菜单
     HQC_VECTOR(HButton) pauseButtons;
 
+    // 开场动画（ROADMAP 3.2）：火花沿曲线跑一遍 + 关卡名淡入
+    int   introTimer;
+    int   introMax;
+    int   introSkip;
+
+    // 接近洞的紧张感（3.4）：音乐切 NEAR_HOLE + 周期警告音
+    int   nearHole;
+    int   warnTimer;
+
     int   frame;
     int   comboWindow;        // 连击窗口（帧）
 
@@ -322,6 +331,14 @@ static int _Game_LoadLevel() {
     static LevelSettings settingsCopy;
     settingsCopy = *settings;
     GameDifficulty_Apply(&settingsCopy, gGameOptions.difficulty);
+
+    // Gauntlet（ROADMAP 3.6）：在难度副本上再叠速度倍率/本目目标分
+    // ⚠️ 必须在 Level_Load 之前改好：关卡会记住这份 settings
+    if (gGameOptions.gauntlet) {
+        settingsCopy.ballSpd    *= gGameOptions.gauntletSpeedMul;
+        settingsCopy.gaugeScore  = gGameOptions.gauntletGauge;
+    }
+
     settings = &settingsCopy;
 
     game.settings = settings;
@@ -343,6 +360,12 @@ static int _Game_LoadLevel() {
     Frog_Configure(game.frog, settings->ballColors);
     BallChainGenerator_SetInitialCount(game.generator, settings->ballStartCount);
 
+    if (gGameOptions.gauntlet) {
+        AutoTest_Event("GAUNTLET_START", "wave=%d difficulty=%d speed=%.2f gauge=%d colors=%d",
+                       gGameOptions.gauntletWave, gGameOptions.gauntletDifficulty,
+                       settings->ballSpd, gGameOptions.gauntletGauge, settings->ballColors);
+    }
+
     game.treasureState = 0;
     game.treasureTimer = 300;    // 5 秒后出现第一颗宝石
     game.treasureScale = 1.0f;
@@ -358,6 +381,14 @@ static int _Game_LoadLevel() {
 
     game.levelFrames   = 0;
     game.levelSeconds  = 0;
+
+    // 开场动画（自动测试里缩短，别把帧预算耗在动画上）
+    game.introTimer = AutoTest_IsActive() ? 20 : 100;
+    game.introMax   = game.introTimer;
+    game.introSkip  = 0;
+
+    game.nearHole   = 0;
+    game.warnTimer  = 60;
 
     _Game_ClearResultDialog();
 
@@ -517,6 +548,42 @@ static void _Game_CheckEnd() {
     if (endReached)
         return;
 
+    // ── Gauntlet：分数过本目目标 = 进下一目（越来越快，随机换图）──────────────
+    if (gGameOptions.gauntlet) {
+        if (Statistics_Score() > gGameOptions.gauntletGauge) {
+            gGameOptions.gauntletWave++;
+            gGameOptions.gauntletGauge += 1000 + 250 * gGameOptions.gauntletDifficulty;
+            gGameOptions.gauntletSpeedMul *= 1.06f;
+
+            HQC_DJ_PlaySound(Store_GetSoundByID(SND_CHANT4));
+            Store_PlayMusic(MUS_GAUNTLET);
+
+            AutoTest_Event("GAUNTLET_WAVE", "wave=%d score=%d nextGauge=%d speedMul=%.2f",
+                           gGameOptions.gauntletWave, Statistics_Score(),
+                           gGameOptions.gauntletGauge, gGameOptions.gauntletSpeedMul);
+            AutoTest_Observe("gauntlet_wave", gGameOptions.gauntletWave);
+
+            if (AutoTest_IsActive() && gGameOptions.levelLimit > 0 &&
+                gGameOptions.gauntletWave > gGameOptions.levelLimit) {
+                AutoTest_Event("LEVEL_LIMIT_REACHED", "waves=%d", gGameOptions.gauntletWave - 1);
+                AutoTest_RequestStop();
+                return;
+            }
+
+            int sc = LevelMgr_GetStageCount();
+            if (sc > 0) {
+                int st = rand() % sc;
+                int lc = LevelMgr_GetLevelCount(st);
+                int lv = lc > 0 ? rand() % lc : 0;
+
+                LevelMgr_SetProgress(st, lv);
+                Scene_Change(SC_GAME);
+            }
+        }
+
+        return;   // Gauntlet 不做"清空链 = 过关"
+    }
+
     // ── 分数槽打满 → 停止生成（余下的球必须清掉才过关，原版行为）──────────
     if (BallChain_IsGenerating(game.chain) && Statistics_Score() > game.settings->gaugeScore) {
         BallChain_SetGenerating(game.chain, false);
@@ -670,6 +737,27 @@ static void Game_Update__() {
 
     game.frame++;
 
+    // ── 开场动画（ROADMAP 3.2）：火花沿曲线跑一遍 + 关卡名，期间球链静止 ──
+    if (game.introTimer > 0) {
+        game.introTimer--;
+
+        // 玩家点击/空格可跳过（自动测试不跳，保证动画帧数可断言）
+        if (!AutoTest_IsActive() &&
+            (HQC_Input_MouseLeftPressed() || HQC_Input_KeyPressed(HQC_KEY_SPACE))) {
+            game.introTimer = 0;
+        }
+
+        if (game.introTimer == 0) {
+            game.introSkip = 1;
+            AutoTest_Event("INTRO_DONE", "frames=%d stage=%d level=%d",
+                           game.introMax, LevelMgr_GetCurrentStage(), LevelMgr_GetCurrentLevelIndex());
+            Statistics_ResetLevel();
+        }
+
+        FloatingTextFactory_Update();
+        return;
+    }
+
     if (Statistics_Lives() <= 0 && !game.gameOver) {
         // 兜底（正常由 _Game_CheckEnd 触发）
         game.gameOver = 1;
@@ -724,6 +812,26 @@ static void Game_Update__() {
             BallChain_SetSpeed(game.chain, baseSpeed / game.settings->slowFactor);
         else
             BallChain_SetSpeed(game.chain, baseSpeed);
+    }
+
+    // ── 接近洞的紧张感（ROADMAP 3.4）：音乐切 NEAR_HOLE + 周期警告音 ────────
+    {
+        int progress = (int)(BallChain_FrontProgress(game.chain) * 100);
+        int nearHole = progress > 80;
+
+        if (nearHole != game.nearHole) {
+            game.nearHole = nearHole;
+
+            Store_PlayMusic(nearHole ? MUS_NEAR_HOLE
+                                     : (gGameOptions.gauntlet ? MUS_GAUNTLET : MUS_GAME));
+
+            AutoTest_Event("MUSIC", "near_hole=%d front=%d%%", nearHole, progress);
+        } else if (game.nearHole) {
+            if (--game.warnTimer <= 0) {
+                game.warnTimer = 50;
+                HQC_DJ_PlaySound(Store_GetSoundByID(SND_WARNING1));
+            }
+        }
     }
 
     // ── 主循环更新 ─────────────────────────────────────────────────────────
@@ -803,6 +911,53 @@ static void _Game_LogBallSamples() {
 // 绘制
 ////////////////////////////////////////////////////////////////////////////////
 
+// 开场动画：火花沿曲线跑一遍 + 关卡名缩放淡入（ROADMAP 3.2）
+static void _Game_DrawIntro() {
+    if (game.introTimer <= 0 || !game.level)
+        return;
+
+    float t = 1.0f - (float)game.introTimer / (float)(game.introMax > 0 ? game.introMax : 1);
+
+    float len = (float)Level_GetCurveLength(game.level);
+
+    if (len > 0) {
+        HQC_Animation sparkle = Store_GetAnimationByID(ANIM_SPARKLE);
+        HQC_Animation_Tick(sparkle);
+
+        for (int i = 0; i < 18; i++) {
+            float p = t * len * 1.15f - i * 42.0f;
+
+            if (p < 0.0f || p > len)
+                continue;
+
+            v2f_t c = Level_GetCurveCoords(game.level, p);
+
+            HQC_Artist_DrawAnimation(sparkle, c.x, c.y);
+        }
+    }
+
+    // 关卡名：0→0.5 淡入放大，0.5→1 淡出
+    if (game.texUI_LevelName) {
+        float alpha = t < 0.6f ? (t / 0.6f) : (1.0f - t) / 0.4f;
+        if (alpha < 0.0f) alpha = 0.0f;
+        if (alpha > 1.0f) alpha = 1.0f;
+
+        HQC_Artist_DrawSetAlpha(alpha);
+        HQC_Artist_DrawSetScale(0.7f + 0.5f * t);
+        HQC_Artist_DrawTexture(game.texUI_LevelName, 640, 330);
+        HQC_Artist_DrawSetScale(1.0f);
+        HQC_Artist_DrawSetAlpha(1.0f);
+    }
+
+    if (AutoTest_IsActive()) {
+        char buff[64];
+        snprintf(buff, sizeof(buff), "INTRO %d%%", (int)(t * 100));
+        HQC_Artist_SetColorHex(C_WHITE);
+        HQC_Artist_DrawText(Store_GetFontByID(FONT_CANCUN_8), buff, 640, 120);
+    }
+}
+
+
 static void _Game_DrawHUD() {
     HQC_Artist_SetColorHex(C_BLACK);
     HQC_Artist_DrawSprite(Store_GetSpriteByID(SPR_GAME_HUD_BORDER), 640, 360);
@@ -817,6 +972,14 @@ static void _Game_DrawHUD() {
     // 关卡号
     snprintf(buff, sizeof(buff), "lvl%d-%d", LevelMgr_GetCurrentStage(), LevelMgr_GetCurrentLevelIndex());
     HQC_Artist_DrawText(Store_GetFontByID(FONT_CANCUN_10), buff, 430, 20);
+
+    // Gauntlet：显示目数与当前目标分
+    if (gGameOptions.gauntlet) {
+        snprintf(buff, sizeof(buff), "wave %d  target %d", gGameOptions.gauntletWave, gGameOptions.gauntletGauge);
+        HQC_Artist_SetColorHex(C_CYAN);
+        HQC_Artist_DrawText(Store_GetFontByID(FONT_CANCUN_8), buff, 430, 42);
+        HQC_Artist_SetColorHex(C_YELLOW);
+    }
 
     // 命（青蛙图标）
     HQC_Sprite live = Store_GetSpriteByID(SPR_GAME_HUD_LIVE);
@@ -923,6 +1086,8 @@ static void Game_Draw__() {
 
     _Game_DrawTreasure();
     FloatingTextFactory_Draw();
+
+    _Game_DrawIntro();
 
     _Game_DrawHUD();
 

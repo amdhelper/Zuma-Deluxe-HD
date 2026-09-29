@@ -29,8 +29,30 @@ void GameOptions_SetDefaults() {
     gGameOptions.autoplay     = 1;
     gGameOptions.startAtMenu  = 0;
     gGameOptions.screenshotFrame = 0;
-    gGameOptions.screenshotPath  = "/tmp/zuma-shot.bmp";
+    gGameOptions.screenshotPath  = NULL;
+    gGameOptions.screenshotResultPath = NULL;
+    gGameOptions.screenshotNextPath   = NULL;
     gGameOptions.seed         = 0;
+
+    gGameOptions.gauntlet          = 0;
+    gGameOptions.gauntletDifficulty = 0;
+    gGameOptions.gauntletWave      = 1;
+    gGameOptions.gauntletGauge     = 1500;
+    gGameOptions.gauntletSpeedMul  = 1.0f;
+}
+
+
+void GameOptions_StartGauntlet(int difficulty) {
+    gGameOptions.gauntlet           = 1;
+    gGameOptions.gauntletDifficulty = difficulty;
+    gGameOptions.gauntletWave       = 1;
+    gGameOptions.gauntletSpeedMul   = 1.0f + 0.15f * difficulty;   // 兔 1.0 → 太阳神 1.45
+    gGameOptions.gauntletGauge      = 1500 + 500 * difficulty;
+
+    gGameOptions.difficulty = difficulty;
+
+    HQC_Log("[gauntlet] start difficulty=%d speedMul=%.2f gauge=%d",
+            difficulty, gGameOptions.gauntletSpeedMul, gGameOptions.gauntletGauge);
 }
 
 
@@ -46,6 +68,7 @@ void GameOptions_PrintUsage(const char* program) {
         "  --difficulty N         难度 0..3（默认 0）\n"
         "  --lives N              初始命数（默认 3）\n"
         "  --seed N               随机种子\n"
+        "  --gauntlet N          直接开 Gauntlet 无限模式（N=0..3 难度）\n"
         "  --no-audio             关闭音频\n"
         "  --no-frame-limit       不锁 60fps\n"
         "  --no-autoplay          自动测试时不瞄准开火（用于验证输局/Game Over）\n"
@@ -95,6 +118,8 @@ void GameOptions_Parse(int argc, char** argv) {
             gGameOptions.lives = atoi(argv[++i]);
         } else if (_streq(a, "--seed") && i + 1 < argc) {
             gGameOptions.seed = (unsigned int)strtoul(argv[++i], NULL, 10);
+        } else if (_streq(a, "--gauntlet") && i + 1 < argc) {
+            GameOptions_StartGauntlet(atoi(argv[++i]));
         } else {
             fprintf(stderr, "unknown option: %s (see --help)\n", a);
             exit(2);

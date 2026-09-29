@@ -57,6 +57,29 @@ void HQC_CreateWindow(const char* caption, int width, int height) {
 }
 
 
+void HQC_Window_ToggleFullscreen() {
+    if (!graphics.window) return;
+
+    // SDL_RenderSetLogicalSize(1280,720) 已在 HQC_CreateWindow 里设好：
+    // 窗口/全屏尺寸变化时 SDL 会按 16:9 自动加黑边（letterbox），不用自己算视口。
+    Uint32 flags = SDL_GetWindowFlags(graphics.window);
+
+    bool fullscreen = (flags & SDL_WINDOW_FULLSCREEN_DESKTOP) != 0;
+
+    if (SDL_SetWindowFullscreen(graphics.window, fullscreen ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP) != 0)
+        HQC_Log("Fullscreen toggle failed: %s", SDL_GetError());
+    else
+        HQC_Log("Fullscreen: %s", fullscreen ? "off" : "on");
+}
+
+
+bool HQC_Window_IsFullscreen() {
+    if (!graphics.window) return false;
+
+    return (SDL_GetWindowFlags(graphics.window) & SDL_WINDOW_FULLSCREEN_DESKTOP) != 0;
+}
+
+
 ///////////////////////////////////////////////////////////////////////
 // 输入层：每帧锁存一次（HQC_Input_Update），查询函数无副作用
 ///////////////////////////////////////////////////////////////////////
@@ -144,6 +167,11 @@ void HQC_Input_ClearScriptedKeys() {
 
 v2i_t HQC_Input_MouseGetPosition() {
     return in.mousePos;
+}
+
+
+bool HQC_Input_IsAltDown() {
+    return in.keys[HQC_KEY_LALT] || in.keys[HQC_KEY_RALT];
 }
 
 
@@ -443,7 +471,11 @@ HQC_Texture HQC_Artist_CreateTextTexture(HQC_Font hfont, const char* text, uint3
     
     SDL_Color sdlColor = { c.R, c.G, c.B, c.A };
 
+    // TTF_SetFontWrappedAlign 是 SDL_ttf 2.20+ 的 API（Ubuntu 22.04 的系统库还没有）：
+    // 老版本没有它就跳过（文本位置本来就由 DrawText 的 x 居中，不影响可用性）
+#if defined(SDL_TTF_VERSION_ATLEAST) && SDL_TTF_VERSION_ATLEAST(2, 20, 0)
     TTF_SetFontWrappedAlign(font->ttf, TTF_WRAPPED_ALIGN_CENTER);
+#endif
     SDL_Surface* surface = TTF_RenderText_Solid_Wrapped(font->ttf, text, sdlColor, 0);
     if (!surface) return NULL;
 
@@ -486,7 +518,9 @@ void HQC_Artist_DrawText(HQC_Font hfont, const char* text, float x, float y) {
     HQC_Color color = HQC_Artist_GetColor();
     SDL_Color sdlColor = { color.R, color.G, color.B, color.A };
 
+#if defined(SDL_TTF_VERSION_ATLEAST) && SDL_TTF_VERSION_ATLEAST(2, 20, 0)
     TTF_SetFontWrappedAlign(font->ttf, TTF_WRAPPED_ALIGN_CENTER);
+#endif
     SDL_Surface* surface = TTF_RenderText_Solid_Wrapped(font->ttf, text, sdlColor, 0);
     if (!surface) {
         const char* err = SDL_GetError();

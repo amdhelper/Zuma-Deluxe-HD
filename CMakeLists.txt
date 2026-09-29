@@ -57,7 +57,21 @@ find_package(EXPAT REQUIRED)
 find_package(SDL2 REQUIRED)
 find_package(SDL2_image REQUIRED)
 
-add_subdirectory(external/SDL_ttf)
+# SDL_ttf：优先用仓库内的 vendored 副本（external/SDL_ttf 是 gitlink，干净克隆里可能是空的），
+# 没有就退回系统库（发行版打包/CI 用 libsdl2-ttf-dev）。
+# ⚠️ 代码用到 TTF_SetFontWrappedAlign（SDL_ttf >= 2.20），旧系统库会在编译期报错，
+#    源码里已用 SDL_TTF_VERSION_ATLEAST 兜底（见 HQC_Artist.c）。
+if (EXISTS "${PROJECT_SOURCE_DIR}/external/SDL_ttf/CMakeLists.txt")
+    message(STATUS "SDL_ttf: using vendored copy (external/SDL_ttf)")
+    add_subdirectory(external/SDL_ttf)
+    set(SDL2_TTF_TARGET SDL2_ttf)
+    set(SDL2_TTF_INCLUDE_DIRS "${PROJECT_SOURCE_DIR}/external/SDL_ttf")
+else()
+    message(STATUS "SDL_ttf: vendored copy missing, falling back to system library")
+    find_library(SDL2_TTF_LIBRARY NAMES SDL2_ttf REQUIRED)
+    find_path(SDL2_TTF_INCLUDE_DIRS NAMES SDL_ttf.h PATH_SUFFIXES SDL2)
+    set(SDL2_TTF_TARGET ${SDL2_TTF_LIBRARY})
+endif()
 
 FILE(GLOB_RECURSE SOURCES RELATIVE ${PROJECT_SOURCE_DIR} "src/*.c")
 
@@ -74,19 +88,8 @@ add_executable(
         src/zuma/Statistics.h
         src/zuma/LevelMgr.c
         src/zuma/LevelMgr.h
-        src/zuma/ecs/World.h
-        src/zuma/ecs/System.h
-        src/zuma/ecs/World.c
-        src/zuma/components/PositionComponent.h
-        src/zuma/entities/FrogEntity.c
-        src/zuma/systems/SpriteDrawSystem.h
-        src/zuma/systems/SpriteDrawSystem.c
-        src/zuma/ecs/Entity.h
-        src/zuma/systems/HudSystem.c
-        src/zuma/components/FrogComponent.h
-        src/zuma/components/ComponentID.h
-        src/zuma/components/HudComponent.h
-        src/zuma/systems/FrogSystem.c
+        src/zuma/Progress.c
+        src/zuma/Progress.h
 )
 
 target_include_directories(
@@ -99,14 +102,14 @@ target_include_directories(
     ${EXPAT_INCLUDE_DIRS}
     ${SDL2_INCLUDE_DIRS}
     ${SDL2_IMAGE_INCLUDE_DIRS}
-    "external/SDL_ttf"
+    ${SDL2_TTF_INCLUDE_DIRS}
 )
 
 target_link_libraries(
     ZumaHD PRIVATE
     SDL2::SDL2
     SDL2_image::SDL2_image
-    SDL2_ttf
+    ${SDL2_TTF_TARGET}
 
     ${BASS_LIB}
     ${BASS_FX_LIB}

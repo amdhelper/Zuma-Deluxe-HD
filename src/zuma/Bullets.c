@@ -2,6 +2,7 @@
 #include "Bullets.h"
 #include "BallChain.h"
 #include "Statistics.h"
+#include "AutoTest.h"
 
 // 子弹（2026-09-29 改为真实抛射）：
 // 旧实现每帧把子弹位置直接赋成鼠标坐标（"跟着鼠标的幽灵球"），
@@ -26,6 +27,12 @@ typedef struct Bullet {
 	void*		insertionBallChain;
 
 	int			insertTimer;
+
+	// 飞出屏幕后的"漏球"结算（GAP BONUS，ROADMAP 3.3）：
+	// 出屏不当场销毁，留给 BulletList_UpdateChainCollisions 按当时球链的缝隙大小计分
+	int			escaped;
+	float		closestBallDist;   // 飞行过程中离最近的球有多近
+	float		gapSize;           // 最近球两侧在曲线上的缝隙（已扣掉紧贴间距）
 
 	HBulletList	bulletList;
 	BallColor	color;
@@ -213,6 +220,8 @@ static void _Bullet_UpdateInserting(Bullet* bullet, int index) {
 static void _Bullet_Update(Bullet* bullet, int index) {
 	if (bullet == NULL) return;
 
+	if (bullet->escaped) return;          // 等 chain 那边结算完再销毁
+
 	if (bullet->insertionBall != NULL) {
 		_Bullet_UpdateInserting(bullet, index);
 		return;
@@ -227,8 +236,10 @@ static void _Bullet_Update(Bullet* bullet, int index) {
 	if (bullet->pos.x < -50 || bullet->pos.x > 1330 ||
 	    bullet->pos.y < -50 || bullet->pos.y > 770) {
 		// 飞出屏幕：这一发打空了，连击链断开（原版行为）
+		// 不在这里销毁：出屏结算（GAP BONUS）需要球链信息，交给
+		// BulletList_UpdateChainCollisions 处理（它拿得到 chain）
+		bullet->escaped = 1;
 		Statistics_BreakChain();
-		_BulletList_DestroyBullet(bullet->bulletList, index);
 	}
 }
 
@@ -258,11 +269,41 @@ void BulletList_UpdateChainCollisions(HBulletList bulletList, HBallChain chain) 
 	for (int i = 0; i < ARR_SIZE; i++) {
 		Bullet* bullet = bl->arr[i];
 
-		if (bullet == NULL || bullet->insertionBall != NULL)
+		if (bullet == NULL)
+			continue;
+
+		// ── 出屏结算（GAP BONUS）──────────────────────────────────────────
+		// 子弹从球链的缝隙里钻出去 = 奖励（原版行为）；缝隙越大分越多。
+		if (bullet->escaped) {
+			float gap = bullet->gapSize;
+			float dist = bullet->closestBallDist;
+
+			// 判据：确实是贴着球链从缝里钻过去的（不是飞到空地上），且两球之间真有缝
+			if (gap > 12.0f && dist > 26.0f && dist < 220.0f) {
+				Statistics_AddBulletGap(gap);
+
+				HQC_DJ_PlaySound(Store_GetSoundByID(SND_GAPBONUS1));
+
+				AutoTest_Event("GAP_BONUS", "gap=%.0f dist=%.0f shots=%d",
+				               gap, dist, Statistics_GapCount());
+				AutoTest_Observe("gaps", Statistics_GapCount());
+			} else {
+				AutoTest_Event("GAP_MISS", "gap=%.0f dist=%.0f", gap, dist);
+			}
+
+			_BulletList_DestroyBullet(bulletList, i);
+			continue;
+		}
+
+		if (bullet->insertionBall != NULL)
 			continue;
 
 		HBall hit = NULL;
 		float best = DISTANCE_TO_COLLIDE;
+
+		// 全局最近球（不受命中阈值限制）：用来衡量这一发"擦得多近"
+		float closest = 1e9f;
+		int   closestIdx = -1;
 
 		for (int j = 0; j < len; j++) {
 			HBall ball = BallChain_GetBallAt(chain, j);
@@ -275,9 +316,39 @@ void BulletList_UpdateChainCollisions(HBulletList bulletList, HBallChain chain) 
 			float d2 = (bullet->pos.x - bp.x) * (bullet->pos.x - bp.x)
 			         + (bullet->pos.y - bp.y) * (bullet->pos.y - bp.y);
 
+			if (d2 < closest) {
+				closest = d2;
+				closestIdx = j;
+			}
+
 			if (d2 < best) {
 				best = d2;
 				hit = ball;
+			}
+		}
+
+		// 记录"最贴近球链时离多近"与"那一刻的缝隙"（出屏时用来判 GAP BONUS）
+		// ⚠️ 必须是整段飞行的**最小**距离：只看出屏那一帧会得到"在屏幕边缘时
+		//    离球多远"，那不是穿缝的证据（实测会给出 dist=438 的假阳性）
+		if (closestIdx >= 0) {
+			float d = HQC_FSqrt(closest);
+
+			if (d < bullet->closestBallDist) {
+				bullet->closestBallDist = d;
+
+				HBall prev = BallChain_GetBallAt(chain, closestIdx - 1);
+				HBall next = BallChain_GetBallAt(chain, closestIdx + 1);
+				HBall cur  = BallChain_GetBallAt(chain, closestIdx);
+
+				float curPos = Ball_GetPositionOnCurve(cur);
+
+				float gapPrev = prev ? (curPos - Ball_GetPositionOnCurve(prev) - BALLS_CHAIN_PAD) : 0.0f;
+				float gapNext = next ? (Ball_GetPositionOnCurve(next) - curPos - BALLS_CHAIN_PAD) : 0.0f;
+
+				float gap = gapPrev > gapNext ? gapPrev : gapNext;
+				if (gap < 0.0f) gap = 0.0f;
+
+				bullet->gapSize = gap;
 			}
 		}
 
@@ -368,6 +439,11 @@ void BulletList_Add(
 
 		bullet->insertTimer		= INSERT_TIME;
 		bullet->bulletList		= bl;
+
+		// GAP BONUS（出屏结算）字段
+		bullet->escaped			= 0;
+		bullet->closestBallDist	= 9999.0f;
+		bullet->gapSize			= 0.0f;
 
 		bullet->anim = HQC_Animation_Clone(Store_GetAnimationByID(ANIM_BALL_BLUE + bullet->color));
 

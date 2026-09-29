@@ -74,6 +74,17 @@ static void _HandleEvents(void) {
     static bool key2Pressed = false;
     static bool keyMPressed = false;
 
+    // 全屏切换：F11 / Alt+Enter（ROADMAP 4.5）
+    static bool fullscreenKeyPressed = false;
+
+    bool fsKey = HQC_Input_IsKeyDown(HQC_KEY_F11) ||
+                 (HQC_Input_IsAltDown() && HQC_Input_IsKeyDown(HQC_KEY_RETURN));
+
+    if (fsKey && !fullscreenKeyPressed)
+        HQC_Window_ToggleFullscreen();
+
+    fullscreenKeyPressed = fsKey;
+
     bool key1Current = HQC_Input_IsKeyDown(HQC_KEY_1);
     bool key2Current = HQC_Input_IsKeyDown(HQC_KEY_2);
     bool keyMCurrent = HQC_Input_IsKeyDown(HQC_KEY_M);

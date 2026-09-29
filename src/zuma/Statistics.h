@@ -41,5 +41,6 @@ void Statistics_BreakChain(void);
 void Statistics_BuildAndInstantiateFloatingText(float x, float y, uint32_t color);
 
 void Statistics_AddBulletGap(float distance);
+int  Statistics_GapCount(void);      // 本次连击窗口内穿缝次数（GAP BONUS 结算/取证用）
 
 #endif //ZUMAHD_STATISTICS_H

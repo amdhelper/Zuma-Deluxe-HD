@@ -174,3 +174,6 @@ void Statistics_AddBulletGap(float distance) {
     gapPoints_ += bonus;
     gapCount_  += 1;
 }
+
+
+int Statistics_GapCount(void) { return gapCount_; }

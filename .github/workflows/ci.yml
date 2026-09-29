@@ -1,0 +1,99 @@
+name: build-and-autotest
+
+# Zuma Deluxe HD — 构建 + 无头自动测试（ROADMAP 4.2）
+# 本仓库没有显示器/音频也能跑完整局：--autotest 会设置 SDL_VIDEODRIVER=dummy、
+# 关闭音频、不锁帧，并输出结构化事件（[TEST] ...）供断言。
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  linux:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake pkg-config \
+            libsdl2-dev libsdl2-image-dev \
+            libexpat1-dev libgl1-mesa-dev
+
+      - name: 取 vendored SDL_ttf（external/SDL_ttf 是 gitlink，没有 .gitmodules）
+        run: |
+          rm -rf external/SDL_ttf
+          git clone --depth 1 --branch release-2.25.0 \
+            https://github.com/libsdl-org/SDL_ttf.git external/SDL_ttf
+
+      - name: 配置
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: 构建
+        run: cmake --build build -j"$(nproc)"
+
+      # ── 自动测试：每条路径都断言退出码 + 关键事件 ──────────────────────────
+      - name: 自动测试 — 通关路径（2 关 + 结算对话框）
+        working-directory: build/bin
+        run: |
+          set -o pipefail
+          ./ZumaHD --autotest --frames 30000 --levels 2 --stage 1 --level 1 | tee /tmp/win.log
+          grep -q "LEVEL_COMPLETE" /tmp/win.log
+          grep -q "RESULT_DIALOG result=complete" /tmp/win.log
+          grep -q "exit=0" /tmp/win.log
+
+      - name: 自动测试 — 掉命路径
+        working-directory: build/bin
+        run: |
+          set -o pipefail
+          ./ZumaHD --autotest --no-autoplay --frames 9000 --stage 1 --level 1 | tee /tmp/lose.log
+          grep -q "BALL_INTO_PIT" /tmp/lose.log
+          grep -q "LIFE_LOST" /tmp/lose.log
+
+      - name: 自动测试 — Game Over 路径
+        working-directory: build/bin
+        run: |
+          set -o pipefail
+          ./ZumaHD --autotest --lives 1 --no-autoplay --stage 1 --level 1 | tee /tmp/over.log
+          grep -q "GAME_OVER" /tmp/over.log
+          grep -q "RESULT_DIALOG result=gameover" /tmp/over.log
+
+      - name: 自动测试 — 菜单 → 选关 → 开打链路
+        working-directory: build/bin
+        run: |
+          set -o pipefail
+          ./ZumaHD --autotest --start-menu --frames 6000 --levels 1 | tee /tmp/menu.log
+          grep -q "MENU_ENTER_ADVENTURE" /tmp/menu.log
+          grep -q "MENU_PLAY" /tmp/menu.log
+          grep -q "LEVEL_COMPLETE" /tmp/menu.log
+
+      - name: 自动测试 — Gauntlet 无限模式
+        working-directory: build/bin
+        run: |
+          set -o pipefail
+          ./ZumaHD --autotest --gauntlet 0 --frames 9000 --levels 2 | tee /tmp/gauntlet.log
+          grep -q "GAUNTLET_START" /tmp/gauntlet.log
+          grep -q "GAUNTLET_WAVE" /tmp/gauntlet.log
+
+      - name: 截图取证（画面像素非空校验）
+        working-directory: build/bin
+        run: |
+          set -o pipefail
+          ./ZumaHD --autotest --frames 4000 --levels 1 --stage 1 --level 1 \
+                   --screenshot-result /tmp/result.bmp | tee /tmp/shot.log
+          test -s /tmp/result.bmp
+
+      - name: 上传日志与截图
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: autotest-logs
+          path: |
+            /tmp/*.log
+            /tmp/result.bmp
+          if-no-files-found: warn

@@ -90,56 +90,77 @@
 
 ---
 
-## 阶段 3 — 玩法深度（P1）
+## 阶段 3 — 玩法深度（3.2/3.3/3.4/3.6 ✅ 已完成；3.1/3.5/3.7 待办）
 
-### 3.1 道具球（power-ups）
-- `BallBonus`（accuracy / explosion / roll-back / pause）在 `BallChain.c` 里已有枚举，但**从未生成、从未生效**
-- 生成：按 `repeat`/`single` 之外的独立概率生成带 bonus 的球（原版在 `BallChain_Append` 附近）
-- 生效：球被爆掉时触发（倒退 = 链速反向；炸弹 = 炸掉周围一圈；暂停 = 冻结链 N 秒；accuracy = 分数加成）
-- 验收：`--autotest` 事件里出现 `POWERUP_USED name=reverse` 且行为可见（链速/位置变化）
+### 3.1 道具球（power-ups）⬜ 待办（卡在素材）
+- `content/images/gameobjects.png` 实测：6 列球体条**只有纯色球**（蓝 47 帧、其余 50 帧，
+  每列尾部 3 帧是空的），**没有道具图标帧**；道具音效齐全
+  （`SND_BOMBEXPLODE / SND_REVERSE1 / SND_SLOWDOWN1 / SND_ACCURACY3 / SND_GAPBONUS1`）
+- 结论：要做道具球，先得确定图标素材来源（在 `gameinterface.png` 里逐块确认，
+  或程序化画图标）。**未做，不要假装做了。**
+- 生成：按独立概率生成带 bonus 的球；生效：炸开时触发（倒退/炸弹/暂停/精准加分）
+- 验收：`--autotest` 事件里出现 `POWERUP_USED name=reverse` 且行为可见
 
-### 3.2 关卡开场/收尾动画
-- 开场：火花沿曲线跑一遍 + 关卡名/`LEVEL x-y` 缩放淡入（原版 `Game_UpdateIntro`，参考 git 历史）
-- 收尾（过关）：从最前球位置沿曲线一路炸到洞，每段 +100（原版 `Game_UpdateOutro`）
-- 验收：`--autotest` 下开场帧数 >0 且收尾期间 `EXPLOSION`/分数递增事件可断言
+### 3.2 关卡开场动画 ✅
+- 开场：火花沿曲线跑一遍（`Level_GetCurveCoords` + `ANIM_SPARKLE`）+ 关卡名缩放淡入，
+  期间球链静止；点击/空格可跳过；自动测试里缩短到 20 帧（保证帧预算）
+- 事件：`INTRO_DONE frames=20`
+- ⚠️ 原版的"过关收尾（沿曲线一路炸到洞）"在本实现里**不适用**：胜利条件是链已清空。
+  球链坠洞的收尾由失败路径的"整链加速入洞"体现。
 
-### 3.3 GAP BONUS
-- `Statistics_AddBulletGap` 已实现但**没有调用点**：子弹穿过球链缝隙飞出屏幕时按缝隙大小给分
-- 触发点：`Bullets.c` 的飞出屏幕分支（先算子弹路径上最近的球间距再计分）
-- 验收：连续两次穿缝 → `points` 里出现 GAP BONUS 加成
+### 3.3 GAP BONUS ✅
+- 子弹飞出屏幕 → 不当场销毁（`bullet->escaped`），交给 `BulletList_UpdateChainCollisions`
+  按"整段飞行的最小贴近距离 + 那一刻的球链缝隙"结算（`Statistics_AddBulletGap`）
+- 判据：`gap > 12px && 26 < 贴近距离 < 220px`（远离球链的飞行不算穿缝）
+- 事件：`GAP_BONUS gap=.. dist=..` / `GAP_MISS`（未达标的也记，便于回归观察）
+- 实测：8000 帧里 8 次 GAP_BONUS（gap 17~264px、dist 61~160px），
+  全是"贴着球链钻过去"的合理样本；修正前只看"出屏那一帧距离"会给出假阳性
 
-### 3.4 接近洞的紧张感
-- 目前只有 `slowFactor` 减速（>80% 处）；补：`SND_WARNING1` 循环警告音 + 骷髅按进度张口（已实现）+ 背景音乐切 `MUS_NEAR_HOLE`
-- 验收：`front_progress > 0.8` 时音乐 order 变化（`--autotest` 打点）
+### 3.4 接近洞的紧张感 ✅
+- `front_progress > 80%` → 音乐切 `MUS_NEAR_HOLE`，离开后切回 `MUS_GAME`
+  （Gauntlet 局切回 `MUS_GAUNTLET`）；期间每 50 帧一次 `SND_WARNING1`
+- 事件：`MUSIC near_hole=1 front=81%`
 
-### 3.5 音乐/音效状态机
-- 音乐已能按 order 切曲：菜单 `MUS_MAIN_MENU`、关卡 `MUS_GAME`、接近洞 `MUS_NEAR_HOLE`、
-  胜利 `MUS_WIN`、失败 `MUS_GAME_OVER`（后三者已接；菜单未接）
-- 音效：连击/链式连击变调已做（`HQC_DJ_PlaySoundPitch`）；补按钮悬停音、宝石音、结束音
-- 验收：切场景时日志/主观听感（或 BASS 当前 order 打点）
+### 3.5 音乐/音效状态机 🟡 部分完成
+- 已接：菜单 `MUS_MAIN_MENU`、关卡 `MUS_GAME`、接近洞 `MUS_NEAR_HOLE`、
+  通关 `MUS_WIN`、失败 `MUS_GAME_OVER`、Gauntlet `MUS_GAUNTLET`
+- 待办：按钮悬停音、宝石音、结束音的细节打磨（低优先）
 
-### 3.6 Gauntlet 模式与双曲线关卡
-- Gauntlet：无限生成 + 难度递增 + 独立的 4 个难度档（`SPR_MENU_GAUNT_BTN_RABBIT/EAGLE/JAGUAR/SUN_GOD` 已在）
-- 双曲线：`LevelGraphics.curveBFile` 已解析但**没用**（`Level.c` 加载了 `curveB`，渲染/物理只用 A）
-- 验收：Gauntlet 跑 5000 帧不崩且分数持续增长
+### 3.6 Gauntlet 模式 ✅
+- 主菜单 Gauntlet → 4 档难度（兔/鹰/豹/太阳神，用已注册的按钮精灵），
+  或命令行 `--gauntlet 0..3`
+- 规则：球流不停，分数打过"本目目标"→ 目数 +1、目标分 +1000+250×难度、
+  球速 ×1.06、随机换一张地图继续；球进洞照常掉命，命尽 = Game Over
+- HUD：显示 `wave N  target M`
+- 事件：`GAUNTLET_START` / `GAUNTLET_WAVE wave=2 score=.. nextGauge=.. speedMul=..`
+- ⚠️ 双曲线（`LevelGraphics.curveBFile` 已解析但渲染/物理仍只用 A）⬜ 待办
 
-### 3.7 Cutout 图层
-- `levels.xml` 有 17 个 `<Cutout image="left|right|tunnel" ...>`（遮挡/隧道口），当前**不解析不绘制**
-- 8 个关卡需要（underover/inversespiral/tunnellevel/overunder…），素材在 `content/levels/<id>/` 下找同名 png
-- 验收：这几个关卡的球在"隧道段"被遮挡（截图 + 像素校验）
+### 3.7 Cutout 图层 ⬜ 待办
+- `levels.xml` 里 17 个 `<Cutout>` 仍未解析/绘制（8 个关卡需要），
+  隧道遮挡目前只靠 `image-top` + t1/t2 分层
 
 ---
 
-## 阶段 4 — 工程化与收尾（P2）
+## 阶段 4 — 工程化与收尾（4.1/4.2/4.4/4.5/4.6 ✅；4.3 部分）
 
-- **4.1 内存**：ASan/LSan 跑 `--autotest` 三路径全绿；球链每帧增删节点是泄漏高发区
-- **4.2 CI**：GitHub Actions（ubuntu + SDL2/expat/BASS）→ 构建 + `--autotest` 三路径断言 + 截图产物
-- **4.3 `TODO.txt` 遗留**：HQC 容器补齐（VECTOR 删除元素 / 链表 / 字典）、
-  精灵映射外置成数据文件 + 解析器、ResourceStore 并入 HQC 框架
-- **4.4 ECS 迁移收尾**：`src/zuma/ecs`、`entities/`、`systems/`（FrogSystem 等）是**半成品死代码**
-  （`SceneGame` 创建了 `World` 但从不跑系统）；要么接进主循环要么删除，别留两套并行实现
-- **4.5 窗口/缩放**：逻辑分辨率固定 1280×720，非 16:9 窗口会被拉伸；补 letterbox 与全屏切换
-- **4.6 打包**：Linux（deb/AppImage）+ Windows(MinGW) 一键出包脚本（当前只有 `1.bat/2.bat` 与 `run_zuma.sh`）
+- **4.1 内存 ✅**：ASan/LSan（`build-asan`，`-fsanitize=address,undefined`）跑两条自动测试路径
+  **零泄漏零报错**。修复了两个真泄漏：`HQC_Container_FreeVector` 漏 free Vector 结构体本身
+  （7790B/259 处）、ResourceStore 里 `HQC_StringConcat` 的路径串没释放（60 处）
+- **4.2 CI ✅**：`.github/workflows/ci.yml` — 构建 + 5 条自动测试路径断言（通关/掉命/Game Over/
+  菜单链路/Gauntlet）+ 截图产物上传。仓库没有 `.gitmodules`（`external/SDL_ttf` 是 gitlink），
+  工作流里显式 clone `release-2.25.0`；`CMakeLists.txt` 也支持退回系统 SDL_ttf
+  （`TTF_SetFontWrappedAlign` 已用 `SDL_TTF_VERSION_ATLEAST` 兜底，旧系统库也能编）
+- **4.3 TODO.txt 遗留 🟡**：HQC 容器补齐（VECTOR 删除元素/链表/字典）、精灵映射外置+解析器、
+  ResourceStore 并入 HQC 框架 —— 未做（都是框架级重构，不影响可玩性）
+- **4.4 ECS 收尾 ✅**：`src/zuma/{ecs,systems,entities,components}`（14 个文件、540 行）
+  实测**没有任何地方引用**（`World_Create`/`FrogSystem`/`SpriteDrawSystem`/`HudSystem` 全零引用），
+  是 v2.0.0 重构留下的半成品 → 已删除（`gio trash` 可恢复，git 历史亦保留），
+  并从 `CMakeLists.txt` 的显式源列表移除。现在只有一套实现：`scenes/` + `Frog/BallChain/Bullets`
+- **4.5 窗口/缩放 ✅**：逻辑分辨率固定 1280×720 + `SDL_RenderSetLogicalSize`，
+  非 16:9 窗口/屏幕由 SDL 自动加黑边（letterbox，不用自己算视口）；
+  新增全屏切换 `F11` / `Alt+Enter`（`HQC_Window_ToggleFullscreen`）
+- **4.6 打包 ✅**：`scripts/package_linux.sh` → `dist/zuma-deluxe-hd-<版本>-linux-x86_64.tar.gz`
+  （含 bin + share/content + lib 里的 BASS 动态库 + 启动脚本 + RPATH `$ORIGIN/../lib`）
 
 ---
 
@@ -149,18 +170,26 @@
 # 构建
 cd ~/pj/Zuma-Deluxe-HD/build && cmake .. && make -j8
 
-# 无头自动测试（三路径）
+# 无头自动测试（五条路径）
 cd bin
-./ZumaHD --autotest --frames 30000 --levels 2      # 通关路径 + 宝石 + 连击
-./ZumaHD --autotest --no-autoplay --frames 9000    # 掉命路径（球进洞）
-./ZumaHD --autotest --lives 1 --no-autoplay        # Game Over 路径
+./ZumaHD --autotest --frames 30000 --levels 2 --stage 1 --level 1   # 通关路径（含结算对话框）
+./ZumaHD --autotest --no-autoplay --frames 9000 --stage 1 --level 1 # 掉命路径（球进洞）
+./ZumaHD --autotest --lives 1 --no-autoplay --stage 1 --level 1     # Game Over 路径
+./ZumaHD --autotest --start-menu --frames 6000 --levels 1           # 菜单 → 选关 → 开打
+./ZumaHD --autotest --gauntlet 0 --frames 9000 --levels 2           # Gauntlet 无限模式
 
-# 画面取证（第 N 帧存 BMP）
+# 画面取证（第 N 帧存 BMP / 结算对话框弹出那一帧存 BMP）
 ./ZumaHD --autotest --frames 640 --screenshot 620 /tmp/shot.bmp
+./ZumaHD --autotest --frames 4000 --levels 1 --screenshot-result /tmp/result.bmp
 
 # 人工试玩（有显示器时）
-./ZumaHD                 # 主菜单；ESC 暂停；鼠标瞄准/左键发射/右键换球
+./ZumaHD                 # 主菜单；ESC 暂停；鼠标瞄准/左键发射/右键换球；F11 全屏
+
+# 出包
+scripts/package_linux.sh
 ```
 
 > 无头运行依赖：`SDL_VIDEODRIVER=dummy`（`--autotest` 自动设置）+ 软件渲染回退 +
 > `ZUMA_NO_AUDIO`（`--autotest` 自动设置）。真实机器上不需要任何环境变量。
+> 存档：跑自动测试时写到 `/tmp/zumahd-autotest-progress.dat`（不碰玩家真实存档），
+> 真实存档在 `~/.local/share/zumahd/progress.dat`；可用 `ZUMA_PROGRESS_FILE` 覆盖。
