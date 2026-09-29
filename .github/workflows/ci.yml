@@ -22,14 +22,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential cmake pkg-config \
-            libsdl2-dev libsdl2-image-dev \
+            libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev \
             libexpat1-dev libgl1-mesa-dev
 
-      - name: 取 vendored SDL_ttf（external/SDL_ttf 是 gitlink，没有 .gitmodules）
+      - name: 取 SDL_ttf（external/SDL_ttf 是 gitlink，仓库没有 .gitmodules）
         run: |
           rm -rf external/SDL_ttf
-          git clone --depth 1 --branch release-2.25.0 \
-            https://github.com/libsdl-org/SDL_ttf.git external/SDL_ttf
+          # 用 SDL2 分支（2.25.x，与仓库内 vendored 版本同一线；release-2.25.0 这个 tag 上游没有）
+          # 失败也不要紧：CMakeLists 会退回系统 libsdl2-ttf（代码对 <2.20 已做版本兜底）
+          git clone --depth 1 --branch SDL2 \
+            https://github.com/libsdl-org/SDL_ttf.git external/SDL_ttf \
+            || echo "SDL_ttf clone 失败，改用系统库"
 
       - name: 配置
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release

@@ -31,11 +31,13 @@ jobs:
             libsdl2-dev libsdl2-image-dev libexpat1-dev libgl1-mesa-dev \
             dpkg-dev python3-pil
 
-      - name: 取 vendored SDL_ttf（external/SDL_ttf 是 gitlink，仓库没有 .gitmodules）
+      - name: 取 SDL_ttf（external/SDL_ttf 是 gitlink，仓库没有 .gitmodules）
         run: |
           rm -rf external/SDL_ttf
-          git clone --depth 1 --branch release-2.25.0 \
-            https://github.com/libsdl-org/SDL_ttf.git external/SDL_ttf
+          # SDL2 分支（2.25.x，与仓库内 vendored 同线）；失败则退回系统 libsdl2-ttf
+          git clone --depth 1 --branch SDL2 \
+            https://github.com/libsdl-org/SDL_ttf.git external/SDL_ttf \
+            || echo "SDL_ttf clone 失败，改用系统库"
 
       - name: 构建
         run: |
