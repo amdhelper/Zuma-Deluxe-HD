@@ -13,3 +13,4 @@ old_src
 build/
 build-asan/
 dist/
+build-dbg/

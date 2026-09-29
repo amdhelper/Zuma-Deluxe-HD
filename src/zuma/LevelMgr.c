@@ -56,6 +56,7 @@ static void _ParseAttributes_Graphics(const char** attr) {
 
     const char* imageName = NULL;
     const char* curveName = NULL;
+    const char* curve2Name = NULL;
     const char* topName   = NULL;
 
     for (int i = 0; attr[i]; i += 2) {
@@ -63,6 +64,8 @@ static void _ParseAttributes_Graphics(const char** attr) {
             gx.id = HQC_StringClone(attr[i+1]);
         } else if (strcmp(attr[i], "curve") == 0) {
             curveName = attr[i+1];
+        } else if (strcmp(attr[i], "curve2") == 0) {
+            curve2Name = attr[i+1];
         } else if (strcmp(attr[i], "image") == 0) {
             imageName = attr[i+1];
         } else if (strcmp(attr[i], "image-top") == 0) {
@@ -91,8 +94,19 @@ static void _ParseAttributes_Graphics(const char** attr) {
     
     char buffer[256];
     
-    snprintf(buffer, sizeof(buffer), "levels/%s/%s.dat", curveName, curveName);
+    // ⚠️ 目录用关卡图 id，文件名才用 curve 名：serpents 的曲线叫 serpents-1/serpents-2，
+    //    文件在 levels/serpents/ 下。旧写法拼成 levels/serpents-1/serpents-1.dat → 打开失败
+    //    （Gauntlet 随机跳到 serpents 时直接把游戏打崩，CI 实测）。
+    snprintf(buffer, sizeof(buffer), "levels/%s/%s.dat", gx.id, curveName);
     gx.curveAFile = HQC_StringClone(buffer);
+
+    // 双曲线关卡（<Graphics ... curve2="serpents-2">，ROADMAP 3.6 的素材基础）
+    if (curve2Name) {
+        snprintf(buffer, sizeof(buffer), "levels/%s/%s.dat", gx.id, curve2Name);
+        gx.curveBFile = HQC_StringClone(buffer);
+    } else {
+        gx.curveBFile = NULL;
+    }
     
     snprintf(buffer, sizeof(buffer), "levels/%s/%s.jpg", gx.id, imageName);
     gx.textureFile = HQC_StringClone(buffer);

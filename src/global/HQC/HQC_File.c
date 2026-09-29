@@ -6,14 +6,11 @@
 HQC_File HQC_File_Open(const char* path, const char* mode) {
     FILE* file = fopen(path, mode);
 
-    if (!file) {
-        HQC_RaiseErrorHeaderFormat(
-            "HQC_File_Open",
-            "Cannot open file [%s] with flags [%s]",
-            path, mode
-        );
-    }
-    
+    // ⚠️ 不再致命退出：缺文件是"可恢复"的（关卡曲线缺失 → 该关跳过/回菜单），
+    //    旧行为会让任何一个素材缺失直接把整局游戏打死（Gauntlet 随机跳关时踩到过）。
+    if (!file)
+        HQC_Log("HQC_File_Open: Cannot open file [%s] with flags [%s]", path, mode);
+
     return file;
 }
 
