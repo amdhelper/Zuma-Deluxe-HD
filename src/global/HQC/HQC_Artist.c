@@ -243,6 +243,19 @@ void HQC_Artist_FreeTexture(HQC_Texture texture) {
     SDL_DestroyTexture((SDL_Texture*)texture);
 }
 
+void HQC_Artist_GetTextureSize(HQC_Texture texture, int* width, int* height) {
+    if (width)  *width  = 0;
+    if (height) *height = 0;
+
+    if (!texture) return;
+
+    int w = 0, h = 0;
+    SDL_QueryTexture((SDL_Texture*)texture, NULL, NULL, &w, &h);
+
+    if (width)  *width  = w;
+    if (height) *height = h;
+}
+
 
 void HQC_Artist_DrawTexture(HQC_Texture texture, float x, float y) {
     if (!texture) 
@@ -377,6 +390,18 @@ void HQC_Artist_Display() {
 bool HQC_Artist_SaveScreenshot(const char* filepath, int width, int height) {
     if (!graphics.render || !filepath)
         return false;
+
+    int winW = 0, winH = 0, outW = 0, outH = 0;
+    float sX = 1, sY = 1;
+    SDL_Rect vp = { 0, 0, 0, 0 };
+
+    SDL_GetWindowSize(graphics.window, &winW, &winH);
+    SDL_GetRendererOutputSize(graphics.render, &outW, &outH);
+    SDL_RenderGetScale(graphics.render, &sX, &sY);
+    SDL_RenderGetViewport(graphics.render, &vp);
+
+    HQC_Log("[screenshot] window=%dx%d output=%dx%d scale=%.2fx%.2f viewport=(%d,%d,%dx%d) read=%dx%d",
+            winW, winH, outW, outH, sX, sY, vp.x, vp.y, vp.w, vp.h, width, height);
 
     SDL_Surface* surface = SDL_CreateRGBSurfaceWithFormat(
         0, width, height, 32, SDL_PIXELFORMAT_ARGB8888);

@@ -132,6 +132,12 @@ static int _Game_LoadLevel() {
         return 0;
     }
 
+    // settings 副本：难度覆盖只改副本，不污染 LevelMgr 注册表（否则重开本关会叠加）
+    static LevelSettings settingsCopy;
+    settingsCopy = *settings;
+    GameDifficulty_Apply(&settingsCopy, gGameOptions.difficulty);
+    settings = &settingsCopy;
+
     game.settings = settings;
     game.graphics = gx;
 

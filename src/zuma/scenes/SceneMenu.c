@@ -2,120 +2,448 @@
 
 #include "../Menu.h"
 #include "../ResourceStore.h"
+#include "../LevelMgr.h"
+#include "../GameOptions.h"
+#include "../AutoTest.h"
+
 #include <stdlib.h>
+#include <stdio.h>
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 主菜单 / 选关 / 设置（2026-09-29 重做）
+//   旧版只有 3 个文字按钮（Start Game / Test Scene / Quit），menu.png 里注册的
+//   40+ 张菜单精灵全部闲置：不能选关、不能选难度、没有进度概念。
+//   现在：Adventure（选关：关卡预览 + 关卡名 + 难度档）→ Play 开打；
+//   Options 调难度与音量；Gauntlet 未实现（置灰不响应，见 ROADMAP 3.6）。
+//
+// ⚠️ 关卡预览用"关卡背景图"而不是 content/images/thumbnails/thumb_N.jpg：
+//   实测那 18 张缩略图是同一张 1280x720 的近乎全黑图（md5 全同、mean≈5/255），
+//   既不是每关预览、1:1 画上去还会盖满整个屏幕（选关界面一片黑）。
+// ═══════════════════════════════════════════════════════════════════════════════
 
 #define private static
 
-private HQC_VECTOR(HButton) _btnList;
-private HScene _pendingScene = NULL;
+#define PANE_MAIN       0
+#define PANE_ADVENTURE  1
+#define PANE_OPTIONS    2
 
-private void _OnBtnGameClick() { 
-    _pendingScene = SC_GAME;
+private struct {
+    int pane;
+
+    int stage;          // 0-based
+    int selLevel;       // 0-based
+    int difficulty;
+    int volume;         // 0..10
+
+    int frame;
+    int clicked;        // 本帧是否已消费点击（防一次点击触发多个按钮）
+
+    // 当前大关的关卡预览（加载好的关卡背景纹理，按大关缓存）
+    HQC_VECTOR(HQC_Texture) previews;
+    int previewStage;
+} menu;
+
+
+////////////////////////////////////////////////////////////////////////////////
+// 通用：图片按钮（直接用 menu.png 的整张按钮精灵 + 悬停态）
+////////////////////////////////////////////////////////////////////////////////
+
+private bool _MouseInRect(int x, int y, int w, int h) {
+    v2i_t m = HQC_Input_MouseGetPosition();
+
+    return m.x >= x - w / 2 && m.x <= x + w / 2 &&
+           m.y >= y - h / 2 && m.y <= y + h / 2;
 }
 
-private void _OnBtnTestClick() { 
-    _pendingScene = SC_TEST;
-}
+private bool _ImageButton(int sprId, int sprHoverId, int x, int y, float scale) {
+    HQC_Sprite spr = Store_GetSpriteByID(sprId);
+    if (!spr) return false;
 
-private void _OnBtnQuitClick() {  
-    exit(0);
-}
+    irect_t rect = HQC_Sprite_GetRect(spr);
 
-private void _Load() {
-    _btnList = HQC_Container_CreateVector(sizeof(HButton));
-    _pendingScene = NULL;
+    bool inside = _MouseInRect(x, y, (int)(rect.width * scale), (int)(rect.height * scale));
 
-    HQC_Log("SceneMenu: Creating buttons...");
+    int drawId = (inside && sprHoverId >= 0) ? sprHoverId : sprId;
 
-    // Create main menu buttons
-    HButton btnGame = Button_Create(640, 300);
-    if (btnGame) {
-        Button_OnClick(btnGame, _OnBtnGameClick);
-        Button_SetText(btnGame, "Start Game");
-        HQC_Container_VectorAdd(_btnList, &btnGame);
-        HQC_Log("SceneMenu: Game button created");
-    } else {
-        HQC_Log("SceneMenu: Failed to create game button");
+    HQC_Artist_DrawSetScale(scale);
+    HQC_Artist_DrawSprite(Store_GetSpriteByID(drawId), (float)x, (float)y);
+    HQC_Artist_DrawSetScale(1);
+
+    if (inside && !menu.clicked && HQC_Input_MouseLeftPressed()) {
+        menu.clicked = 1;
+        HQC_DJ_PlaySound(Store_GetSoundByID(SND_BUTTON1));
+        return true;
     }
 
-    HButton btnTest = Button_Create(640, 400);
-    if (btnTest) {
-        Button_SetText(btnTest, "Test Scene");
-        Button_OnClick(btnTest, _OnBtnTestClick);
-        HQC_Container_VectorAdd(_btnList, &btnTest);
-        HQC_Log("SceneMenu: Test button created");
-    } else {
-        HQC_Log("SceneMenu: Failed to create test button");
-    }
-
-    HButton btnQuit = Button_Create(640, 500);
-    if (btnQuit) {
-        Button_SetText(btnQuit, "Quit");
-        Button_OnClick(btnQuit, _OnBtnQuitClick);
-        HQC_Container_VectorAdd(_btnList, &btnQuit);
-        HQC_Log("SceneMenu: Quit button created");
-    } else {
-        HQC_Log("SceneMenu: Failed to create quit button");
-    }
-    
-    HQC_Log("SceneMenu: Total buttons created: %zu", HQC_Container_VectorCount(_btnList));
+    return false;
 }
 
-private void _Update() {
-    size_t count = HQC_Container_VectorCount(_btnList);
+
+private void _SetPane(int pane) {
+    menu.pane = pane;
+    menu.clicked = 1;   // 切换面板当帧不再响应点击
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+// 关卡预览纹理（按大关缓存）
+////////////////////////////////////////////////////////////////////////////////
+
+private void _FreePreviews() {
+    if (!menu.previews) return;
+
+    size_t n = HQC_Container_VectorCount(menu.previews);
+    for (size_t i = 0; i < n; i++) {
+        HQC_Texture* t = HQC_Container_VectorGet(menu.previews, i);
+        if (*t) HQC_Artist_FreeTexture(*t);
+    }
+
+    HQC_Container_FreeVector(menu.previews);
+    menu.previews = NULL;
+    menu.previewStage = -1;
+}
+
+
+private void _EnsurePreviews(int stage) {
+    if (menu.previews && menu.previewStage == stage)
+        return;
+
+    _FreePreviews();
+
+    menu.previews = HQC_Container_CreateVector(sizeof(HQC_Texture));
+    menu.previewStage = stage;
+
+    int count = LevelMgr_GetLevelCount(stage);
+
     for (int i = 0; i < count; i++) {
-        HButton* btn = HQC_Container_VectorGet(_btnList, i);
-        Button_Update(*btn);
+        LevelGraphics* gx = LevelMgr_GetLevelGraphics(stage, i);
+        HQC_Texture tex = NULL;
+
+        // 预览 = 关卡背景图（content/levels/<id>/<id>.jpg）
+        if (gx && gx->textureFile)
+            tex = HQC_Artist_LoadTexture(gx->textureFile);
+
+        HQC_Container_VectorAdd(menu.previews, &tex);
     }
 
-    if (_pendingScene) {
-        Scene_Change(_pendingScene);
-        _pendingScene = NULL;
-    }
+    HQC_Log("SceneMenu: previews for stage %d loaded (%d levels)", stage + 1, count);
 }
 
-private void _Draw() {
-    // Draw background using menu texture
-    HQC_Texture menuTexture = Store_GetTextureByID(TEX_MENU);
-    if (menuTexture) {
-        // Draw menu background sprite
-        HQC_Sprite menuBg = Store_GetSpriteByID(SPR_MENU_SCREEN_MAIN);
-        if (menuBg) {
-            HQC_Artist_DrawSprite(menuBg, 640, 360);
+
+// 按格子尺寸缩放整张背景图（原图 1280x720，1:1 画会盖满整个屏幕）
+private void _DrawPreview(HQC_Texture tex, int cx, int cy, int cellW, int cellH, bool highlight) {
+    if (!tex) {
+        HQC_Artist_SetColorHex(highlight ? C_YELLOW : 0x404040);
+        HQC_Artist_FillRect(cx - cellW / 2, cy - cellH / 2, cellW, cellH);
+        return;
+    }
+
+    int tw = 0, th = 0;
+    HQC_Artist_GetTextureSize(tex, &tw, &th);
+    if (tw <= 0 || th <= 0) return;
+
+    float scale = (float)cellW / (float)tw;
+    if ((float)cellH / (float)th < scale)
+        scale = (float)cellH / (float)th;
+
+    HQC_Artist_DrawSetScale(highlight ? scale * 1.06f : scale);
+    HQC_Artist_DrawTexture(tex, (float)cx, (float)cy);
+    HQC_Artist_DrawSetScale(1);
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+// 主菜单
+////////////////////////////////////////////////////////////////////////////////
+
+private void _StartAdventure() {
+    LevelMgr_ClampProgress(&menu.stage, &menu.selLevel);
+    _SetPane(PANE_ADVENTURE);
+}
+
+private void _StartGauntlet() {
+    // Gauntlet 模式未实现（ROADMAP 阶段 3.6）—— 置灰按钮不给点
+    HQC_Log("Gauntlet mode is not implemented yet (see docs/ROADMAP.md 3.6)");
+}
+
+private void _OpenOptions() { _SetPane(PANE_OPTIONS); }
+
+private void _QuitGame() { exit(0); }
+
+
+private void _DrawMainPane() {
+    // 背景（天空 + 主屏 + 太阳 + 标题）
+    HQC_Sprite sky = Store_GetSpriteByID(SPR_MENU_SCREEN_MAIN_SKY);
+    if (sky) HQC_Artist_DrawSprite(sky, 640, 600);
+
+    HQC_Sprite screen = Store_GetSpriteByID(SPR_MENU_SCREEN_MAIN);
+    if (screen) HQC_Artist_DrawSprite(screen, 640, 360);
+
+    HQC_Sprite sunLight = Store_GetSpriteByID(SPR_MENU_MAIN_SUN_LIGHT);
+    if (sunLight) {
+        HQC_Artist_DrawSetAlpha(0.2f);
+        HQC_Artist_DrawSprite(sunLight, 320, 200);
+        HQC_Artist_DrawSetAlpha(1.0f);
+    }
+
+    HQC_Sprite sun = Store_GetSpriteByID(SPR_MENU_MAIN_SUN);
+    if (sun) HQC_Artist_DrawSprite(sun, 320, 200);
+
+    HQC_Sprite title = Store_GetSpriteByID(SPR_MENU_HEAD);
+    if (title) HQC_Artist_DrawSprite(title, 640, 150);
+
+    // 四个大按钮（Adventure / Gauntlet / Options / Quit）
+    if (_ImageButton(SPR_MENU_MAIN_BTN_ADVENTURE, SPR_MENU_MAIN_BTN_ADVENTURE_HOVER, 640, 320, 1.0f))
+        _StartAdventure();
+
+    if (_ImageButton(SPR_MENU_MAIN_BTN_GAUNTLET, SPR_MENU_MAIN_BTN_GAUNTLET_HOVER, 400, 480, 1.0f))
+        _StartGauntlet();
+
+    if (_ImageButton(SPR_MENU_MAIN_BTN_OPTIONS, SPR_MENU_MAIN_BTN_OPTIONS_HOVER, 880, 480, 1.0f))
+        _OpenOptions();
+
+    if (_ImageButton(SPR_MENU_MAIN_BTN_QUIT, SPR_MENU_MAIN_BTN_QUIT_HOVER, 640, 620, 0.8f))
+        _QuitGame();
+
+    HQC_Artist_SetColorHex(C_WHITE);
+    HQC_Artist_DrawText(Store_GetFontByID(FONT_CANCUN_8),
+                        "Zuma Deluxe HD remake — WIP (see docs/ROADMAP.md)", 640, 692);
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+// 选关
+////////////////////////////////////////////////////////////////////////////////
+
+private void _DrawAdventurePane() {
+    HQC_Sprite screen = Store_GetSpriteByID(SPR_MENU_SCREEN_GAUNTLET);
+    if (screen) HQC_Artist_DrawSprite(screen, 640, 360);
+
+    char buff[128];
+
+    _EnsurePreviews(menu.stage);
+
+    int stageCount = LevelMgr_GetStageCount();
+    int levelCount = LevelMgr_GetLevelCount(menu.stage);
+
+    snprintf(buff, sizeof(buff), "Stage %d / %d", menu.stage + 1, stageCount);
+    HQC_Artist_SetColorHex(C_WHITE);
+    HQC_Artist_DrawText(Store_GetFontByID(FONT_CANCUN_13), buff, 640, 56);
+
+    // 关卡格子（每行 4 个，预览按格子缩放）
+    const int cellW = 250, cellH = 141;
+    const int gapX = 26, gapY = 48;
+    const int cols = 4;
+    const int rows = (levelCount + cols - 1) / cols;
+    const int gridW = cols * cellW + (cols - 1) * gapX;
+    const int gridX0 = 640 - gridW / 2 + cellW / 2;
+    const int gridY0 = 240;
+
+    if (rows == 1 || rows == 2)
+        (void)gridY0;   // 行数少时保持顶部对齐
+
+    for (int i = 0; i < levelCount; i++) {
+        int col = i % cols;
+        int row = i / cols;
+
+        int x = gridX0 + col * (cellW + gapX);
+        int y = gridY0 + row * (cellH + gapY);
+
+        bool selected = (i == menu.selLevel);
+        bool hovered  = _MouseInRect(x, y, cellW, cellH);
+
+        HQC_Texture tex = NULL;
+        if (menu.previews && (size_t)i < HQC_Container_VectorCount(menu.previews))
+            tex = *(HQC_Texture*)HQC_Container_VectorGet(menu.previews, i);
+
+        _DrawPreview(tex, x, y, cellW, cellH, selected || hovered);
+
+        snprintf(buff, sizeof(buff), "%d-%d", menu.stage + 1, i + 1);
+        HQC_Artist_SetColorHex((selected || hovered) ? C_YELLOW : C_WHITE);
+        HQC_Artist_DrawText(Store_GetFontByID(FONT_CANCUN_10), buff,
+                            (float)x, (float)(y + cellH / 2 + 20));
+
+        if (hovered && !menu.clicked && HQC_Input_MouseLeftPressed()) {
+            menu.clicked = 1;
+            menu.selLevel = i;
+            HQC_DJ_PlaySound(Store_GetSoundByID(SND_BUTTON1));
         }
     }
-    
-    // Draw title
-    HQC_Artist_SetColorHex(0xFFFFFF);
-    HQC_Artist_DrawText(
-        Store_GetFontByID(0), 
-        "Zuma HD - Main Menu", 
-        640, 150
-    );
-    
-    // Draw instructions
-    HQC_Artist_DrawText(
-        Store_GetFontByID(0), 
-        "Press 1 for Game, 2 for Test, M for Menu, ESC to quit", 
-        640, 600
-    );
 
-    // Draw buttons
-    size_t count = HQC_Container_VectorCount(_btnList);
-    for (int i = 0; i < count; i++) {
-        HButton* btn = HQC_Container_VectorGet(_btnList, i);
-        Button_Draw(*btn);
+    // 选中关卡名 + 设置 id
+    LevelGraphics* gx = LevelMgr_GetLevelGraphics(menu.stage, menu.selLevel);
+    LevelSettings* st = LevelMgr_GetLevelSettings(menu.stage, menu.selLevel);
+
+    if (gx && st) {
+        snprintf(buff, sizeof(buff), "%s   (%s)", gx->dispName ? gx->dispName : gx->id,
+                 st->id ? st->id : "?");
+        HQC_Artist_SetColorHex(C_WHITE);
+        HQC_Artist_DrawText(Store_GetFontByID(FONT_CANCUN_12), buff, 640, 500);
+    }
+
+    // 难度（点击循环切换 4 档）
+    snprintf(buff, sizeof(buff), "Difficulty:  < %s >", GameDifficulty_Name(menu.difficulty));
+    bool diffHover = _MouseInRect(640, 545, 460, 44);
+    HQC_Artist_SetColorHex(diffHover ? C_YELLOW : C_WHITE);
+    HQC_Artist_DrawText(Store_GetFontByID(FONT_CANCUN_12), buff, 640, 545);
+
+    if (diffHover && !menu.clicked && HQC_Input_MouseLeftPressed()) {
+        menu.clicked = 1;
+        menu.difficulty = (menu.difficulty + 1) % 4;
+        gGameOptions.difficulty = menu.difficulty;
+        HQC_DJ_PlaySound(Store_GetSoundByID(SND_BUTTON1));
+    }
+
+    // 上一关 / 下一关 / 开打
+    if (_ImageButton(SPR_MENU_GAUNT_BTN_BACK, SPR_MENU_GAUNT_BTN_BACK_HOVER, 300, 635, 1.0f)) {
+        if (menu.stage > 0) { menu.stage--; menu.selLevel = 0; _EnsurePreviews(menu.stage); }
+        else                { _SetPane(PANE_MAIN); }
+    }
+
+    if (_ImageButton(SPR_MENU_GAUNT_BTN_NEXT, SPR_MENU_GAUNT_BTN_NEXT_HOVER, 980, 635, 1.0f)) {
+        if (menu.stage + 1 < LevelMgr_GetStageCount()) {
+            menu.stage++;
+            menu.selLevel = 0;
+            _EnsurePreviews(menu.stage);
+        }
+    }
+
+    if (_ImageButton(SPR_MENU_GAUNT_BTN_PLAY, SPR_MENU_GAUNT_BTN_PLAY_HOVER, 640, 635, 1.2f)) {
+        gGameOptions.difficulty = menu.difficulty;
+
+        LevelMgr_SetProgress(menu.stage, menu.selLevel);
+
+        AutoTest_Event("MENU_PLAY", "stage=%d level=%d difficulty=%d",
+                       menu.stage + 1, menu.selLevel + 1, menu.difficulty);
+
+        Scene_Change(SC_GAME);
+    }
+
+    HQC_Artist_SetColorHex(C_WHITE);
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+// 设置
+////////////////////////////////////////////////////////////////////////////////
+
+private void _DrawOptionsPane() {
+    HQC_Sprite screen = Store_GetSpriteByID(SPR_MENU_SCREEN_GAUNTLET);
+    if (screen) HQC_Artist_DrawSprite(screen, 640, 360);
+
+    char buff[128];
+
+    HQC_Artist_SetColorHex(C_WHITE);
+    HQC_Artist_DrawText(Store_GetFontByID(FONT_CANCUN_13), "Options", 640, 90);
+
+    snprintf(buff, sizeof(buff), "Difficulty:  < %s >", GameDifficulty_Name(menu.difficulty));
+    bool diffHover = _MouseInRect(640, 260, 460, 44);
+    HQC_Artist_SetColorHex(diffHover ? C_YELLOW : C_WHITE);
+    HQC_Artist_DrawText(Store_GetFontByID(FONT_CANCUN_12), buff, 640, 260);
+    if (diffHover && !menu.clicked && HQC_Input_MouseLeftPressed()) {
+        menu.clicked = 1;
+        menu.difficulty = (menu.difficulty + 1) % 4;
+        gGameOptions.difficulty = menu.difficulty;
+    }
+
+    snprintf(buff, sizeof(buff), "Master volume:  < %d%% >", menu.volume * 10);
+    bool volHover = _MouseInRect(640, 340, 460, 44);
+    HQC_Artist_SetColorHex(volHover ? C_YELLOW : C_WHITE);
+    HQC_Artist_DrawText(Store_GetFontByID(FONT_CANCUN_12), buff, 640, 340);
+    if (volHover && !menu.clicked && HQC_Input_MouseLeftPressed()) {
+        menu.clicked = 1;
+        menu.volume = (menu.volume + 1) % 11;
+        HQC_DJ_SetMasterVolume(menu.volume / 10.0f);
+        HQC_DJ_PlaySound(Store_GetSoundByID(SND_BUTTON1));
+    }
+
+    HQC_Artist_SetColorHex(C_WHITE);
+    HQC_Artist_DrawText(Store_GetFontByID(FONT_CANCUN_8),
+                        "Gauntlet / More Games: not implemented yet", 640, 420);
+
+    if (_ImageButton(SPR_MENU_GAUNT_BTN_BACK, SPR_MENU_GAUNT_BTN_BACK_HOVER, 640, 560, 1.2f))
+        _SetPane(PANE_MAIN);
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+// 自动测试：脚本化点击（菜单链路取证）
+////////////////////////////////////////////////////////////////////////////////
+
+private void _MenuAutoplay() {
+    if (!AutoTest_IsActive() || !gGameOptions.startAtMenu)
+        return;
+
+    int f = menu.frame;
+
+    // 30: 悬停 Adventure，32: 点击 → 进选关；50: 悬停 Play，52: 点击 → 开打
+    if (f == 30) { AutoTest_SetPointer(640, 320, 0, 0); AutoTest_Event("MENU_HOVER_ADVENTURE", ""); }
+    if (f == 32) { AutoTest_SetPointer(640, 320, 1, 0); }
+    if (f == 34) { AutoTest_SetPointer(640, 320, 0, 0); }
+
+    if (f == 36) { AutoTest_Event("MENU_ENTER_ADVENTURE", "pane=%d levels=%d",
+                                  menu.pane, LevelMgr_GetLevelCount(menu.stage)); }
+
+    if (f == 50) { AutoTest_SetPointer(640, 635, 0, 0); AutoTest_Event("MENU_HOVER_PLAY", ""); }
+    if (f == 52) { AutoTest_SetPointer(640, 635, 1, 0); }
+    if (f == 54) { AutoTest_SetPointer(640, 635, 0, 0); }
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+// 场景回调
+////////////////////////////////////////////////////////////////////////////////
+
+private void _Update() {
+    menu.frame++;
+    menu.clicked = 0;
+
+    _MenuAutoplay();
+
+    // ESC：主菜单退出，其它面板返回主菜单
+    if (HQC_Input_KeyPressed(HQC_KEY_ESCAPE)) {
+        if (menu.pane == PANE_MAIN) exit(0);
+        _SetPane(PANE_MAIN);
     }
 }
+
+
+private void _Draw() {
+    switch (menu.pane) {
+        case PANE_ADVENTURE: _DrawAdventurePane(); break;
+        case PANE_OPTIONS:   _DrawOptionsPane();   break;
+        default:             _DrawMainPane();      break;
+    }
+}
+
+
+private void _Load() {
+    HQC_Log("SceneMenu: loading");
+
+    menu.pane         = PANE_MAIN;
+    menu.stage        = 0;
+    menu.selLevel     = 0;
+    menu.difficulty   = gGameOptions.difficulty;
+    menu.volume       = 10;
+    menu.frame        = 0;
+    menu.clicked      = 0;
+    menu.previews     = NULL;
+    menu.previewStage = -1;
+
+    LevelMgr_ClampProgress(&menu.stage, &menu.selLevel);
+
+    HQC_DJ_SetMasterVolume(menu.volume / 10.0f);
+
+    Store_PlayMusic(MUS_MAIN_MENU);
+}
+
 
 private void _Free() {
-    size_t count = HQC_Container_VectorCount(_btnList);
-    for (int i = 0; i < count; i++) {
-        HButton* btn = HQC_Container_VectorGet(_btnList, i);
-        Button_Destroy(*btn);
-    }
-    HQC_Container_FreeVector(_btnList);
+    _FreePreviews();
+
+    AutoTest_Event("MENU_UNLOAD", "pane=%d", menu.pane);
 }
+
 
 HScene Scene_Register_Menu() {
     return Scene_New("menu", _Load, _Update, _Draw, _Free);

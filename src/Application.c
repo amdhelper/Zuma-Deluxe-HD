@@ -109,7 +109,7 @@ static void _Start(void) {
     LevelMgr_Reset();
     LevelMgr_SetProgress(gGameOptions.startStage - 1, gGameOptions.startLevel - 1);
 
-    if (AutoTest_IsActive()) {
+    if (AutoTest_IsActive() && !gGameOptions.startAtMenu) {
         HQC_Log("Application: autotest — starting game scene directly");
         Scene_Change(SC_GAME);
         return;

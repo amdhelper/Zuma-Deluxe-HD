@@ -6,6 +6,7 @@
 #include <time.h>
 
 #include "../global/HQC.h"
+#include "Level.h"
 
 GameOptions gGameOptions;
 
@@ -26,6 +27,7 @@ void GameOptions_SetDefaults() {
     gGameOptions.noAudio      = 0;
     gGameOptions.noFrameLimit = 0;
     gGameOptions.autoplay     = 1;
+    gGameOptions.startAtMenu  = 0;
     gGameOptions.screenshotFrame = 0;
     gGameOptions.screenshotPath  = "/tmp/zuma-shot.bmp";
     gGameOptions.seed         = 0;
@@ -47,6 +49,7 @@ void GameOptions_PrintUsage(const char* program) {
         "  --no-audio             关闭音频\n"
         "  --no-frame-limit       不锁 60fps\n"
         "  --no-autoplay          自动测试时不瞄准开火（用于验证输局/Game Over）\n"
+        "  --start-menu           自动测试也从主菜单开始（验证菜单→选关→开打链路）\n"
         "  --screenshot N PATH    在第 N 帧存一张截图（BMP，取证用）\n"
         "  --help                 显示本帮助\n",
         program ? program : "ZumaHD");
@@ -70,6 +73,8 @@ void GameOptions_Parse(int argc, char** argv) {
             gGameOptions.noFrameLimit = 1;
         } else if (_streq(a, "--no-autoplay")) {
             gGameOptions.autoplay = 0;
+        } else if (_streq(a, "--start-menu")) {
+            gGameOptions.startAtMenu = 1;
         } else if (_streq(a, "--screenshot") && i + 2 < argc) {
             gGameOptions.screenshotFrame = atoi(argv[++i]);
             gGameOptions.screenshotPath  = argv[++i];
@@ -118,4 +123,49 @@ void GameOptions_LogSummary() {
             gGameOptions.autotest, gGameOptions.maxFrames, gGameOptions.levelLimit,
             gGameOptions.startStage, gGameOptions.startLevel, gGameOptions.difficulty,
             gGameOptions.lives, gGameOptions.seed);
+}
+
+
+// ── 难度覆盖（移植自 v0.1.0 Game_Init 的 4 档预设）──────────────────────────
+const char* GameDifficulty_Name(int difficulty) {
+    switch (difficulty) {
+        case 0: return "Easy";
+        case 1: return "Normal";
+        case 2: return "Hard";
+        case 3: return "Expert";
+        default: return "?";
+    }
+}
+
+void GameDifficulty_Apply(struct LevelSettings* settings, int difficulty) {
+    if (!settings) return;
+
+    if (difficulty < 0) difficulty = 0;
+    if (difficulty > 3) difficulty = 3;
+
+    switch (difficulty) {
+        case 0:
+            settings->ballColors     = 4;
+            settings->partTime       = 70;
+            settings->ballStartCount = 40;
+            break;
+        case 1:
+            settings->ballColors     = 5;
+            settings->partTime       = 100;
+            settings->ballStartCount = 50;
+            break;
+        case 2:
+            settings->ballColors     = 6;
+            settings->repeatChance   = 25;
+            settings->partTime       = 120;
+            settings->ballStartCount = 60;
+            break;
+        case 3:
+            settings->ballColors     = 6;
+            settings->partTime       = 150;
+            settings->ballStartCount = 60;
+            break;
+    }
+
+    if (settings->ballColors > 6) settings->ballColors = 6;
 }

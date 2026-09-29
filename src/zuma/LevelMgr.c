@@ -168,6 +168,8 @@ static void _ParseAttributes_StageProgression(const char** attr) {
     // stage1="...", diffi1="..."
     // We need to parse up to stage13
     
+    int levelCount = 0;
+
     for (int s = 1; s <= 13; s++) {
         char stageKey[32];
         char diffiKey[32];
@@ -185,111 +187,53 @@ static void _ParseAttributes_StageProgression(const char** attr) {
         if (stageVal && diffiVal) {
             Stage stage;
             stage.levels = HQC_Container_CreateVector(sizeof(LevelEntry));
-            
-            // We need to split both strings and pair them
-            // But wait, HQC_Container doesn't support vector of strings easily directly without typedef? 
-            // I'll manually split and pair.
-            
-            char* sStr = HQC_StringClone(stageVal);
-            char* dStr = HQC_StringClone(diffiVal);
-            
-            char* sCtx = NULL;
-            char* dCtx = NULL;
-            
-            char* sToken = strtok_r(sStr, ",", &sCtx);
-            char* dToken = strtok_r(dStr, ",", &dCtx);
-            
-            while (sToken && dToken) {
-                LevelEntry entry;
-                entry.graphicsID = HQC_StringClone(sToken);
-                entry.settingsID = HQC_StringClone(dToken);
-                
-                HQC_Container_VectorAdd(stage.levels, &entry);
-                
-                sToken = strtok_r(NULL, ",", &sCtx);
-                dToken = strtok_r(NULL, ",", &dCtx);
-            }
-            
-            // Handle case where one list is shorter? Assume valid XML for now.
-            // If diffi list is shorter, reuse last diffi? Original game logic might do that.
-            // For now assume 1:1 mapping or repeat last difficulty if needed.
-            // But typical levels.xml seems to have matching counts or logic.
-            // Wait, looking at XML:
-            // stage1 = "spiral,claw,..." (18 items)
-            // diffi1 = "lvl11,lvl12,lvl13,lvl14,lvl15" (5 items)
-            // MISMATCH!
-            // Ah, the logic must be: Levels in stage use difficulty from the list sequentially?
-            // Or maybe difficulty list is for "Level 1-1", "Level 1-2"?
-            // Re-reading XML comments:
-            // L1 = spiral,claw...
-            // It seems "stage1" list contains the sequence of maps.
-            // "diffi1" list contains settings to apply.
-            // But how do they map? 18 maps vs 5 settings?
-            // Maybe they cycle? Or maybe the settings are for "1-1", "1-2", "1-3"... and they apply to the map sequence?
-            // Actually, in Zuma, you play maps.
-            // Stage 1-1: Spiral, Settings lvl11?
-            // Stage 1-2: Claw, Settings lvl12?
-            // Stage 1-5: Turnaround, Settings lvl15?
-            // Stage 1-6: Longrange? Settings?
-            // The XML says:
-            // stage1="spiral...inversespiral"
-            // diffi1="lvl11...lvl15"
-            // If I play 5 levels, do I advance to Stage 2?
-            // Ah, usually you play a subset of maps per stage?
-            // Or maybe the `settings` list defines the number of levels in that stage?
-            // Yes! "diffi1" has 5 items. So Stage 1 has 5 levels.
-            // But "stage1" has 18 maps. This is the POOL of maps for Stage 1.
-            // The game picks a map from the pool for each level in the stage.
-            // Ideally it picks sequentially or randomly.
-            // For simplicity, let's pick sequentially from the pool.
-            
-            // So: Stage 1 has 5 levels (defined by diffi1 count).
-            // Level 1: Settings lvl11, Map: stage1_pool[0] (Spiral)
-            // Level 2: Settings lvl12, Map: stage1_pool[1] (Claw)
-            // ...
-            // Level 5: Settings lvl15, Map: stage1_pool[4] (Turnaround)
-            
-            // So the Stage struct should hold the generated sequence of levels.
-            
+
+            // 一个 stage 有 N 关（N = diffi 列表长度），关卡地图从 stage 地图池里顺序取。
+            // 🔴 旧实现在这里先做了一次"stage/diffi 一一配对"循环（只配出 min(18,5)=5 条），
+            // 下面又按 diffi 长度重建了一套 → 每关的 levels 数量翻倍（stage1 = 10 条，
+            // 选关界面出现重复关卡）。只保留后面这一套。
             HQC_VECTOR(char*) mapPool = HQC_Container_CreateVector(sizeof(char*));
             char* mStr = HQC_StringClone(stageVal);
             char* mCtx = NULL;
             char* mToken = strtok_r(mStr, ",", &mCtx);
-            while(mToken) {
-                char* s = HQC_StringClone(mToken);
-                HQC_Container_VectorAdd(mapPool, &s);
+            while (mToken) {
+                char* s2 = HQC_StringClone(mToken);
+                HQC_Container_VectorAdd(mapPool, &s2);
                 mToken = strtok_r(NULL, ",", &mCtx);
             }
             free(mStr);
-            
+
             char* setStr = HQC_StringClone(diffiVal);
             char* setCtx = NULL;
             char* setToken = strtok_r(setStr, ",", &setCtx);
+            size_t mapCount = HQC_Container_VectorCount(mapPool);
             int mapIdx = 0;
-            
-            while(setToken) {
+
+            while (setToken) {
                 LevelEntry entry;
                 entry.settingsID = HQC_StringClone(setToken);
-                
-                // Pick map from pool
-                if (HQC_Container_VectorCount(mapPool) > 0) {
-                    char** pMapID = HQC_Container_VectorGet(mapPool, mapIdx % HQC_Container_VectorCount(mapPool));
+
+                if (mapCount > 0) {
+                    char** pMapID = HQC_Container_VectorGet(mapPool, mapIdx % (int)mapCount);
                     entry.graphicsID = HQC_StringClone(*pMapID);
                     mapIdx++;
                 } else {
-                    entry.graphicsID = HQC_StringClone("longrange"); // Fallback
+                    entry.graphicsID = HQC_StringClone("longrange");
                 }
-                
+
                 HQC_Container_VectorAdd(stage.levels, &entry);
+                levelCount++;
                 setToken = strtok_r(NULL, ",", &setCtx);
             }
             free(setStr);
-            // Free map pool strings? (leaked for now, fixing later if needed)
-            
+
+            for (size_t i = 0; i < mapCount; i++) {
+                char** pMapID = HQC_Container_VectorGet(mapPool, (int)i);
+                free(*pMapID);
+            }
+            HQC_Container_FreeVector(mapPool);
+
             HQC_Container_VectorAdd(mgr.stages, &stage);
-            
-            free(sStr);
-            free(dStr);
         }
     }
 }
@@ -461,6 +405,62 @@ int LevelMgr_GetStageCount() {
 
 int LevelMgr_GetSettingsCount() {
     return (int)HQC_Container_VectorCount(mgr.settingsList);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// 选关界面（0-based）
+////////////////////////////////////////////////////////////////////////////////
+
+int LevelMgr_GetLevelCount(int stage) {
+    if (stage < 0 || stage >= (int)HQC_Container_VectorCount(mgr.stages)) return 0;
+
+    Stage* stg = (Stage*)HQC_Container_VectorGet(mgr.stages, stage);
+    return (int)HQC_Container_VectorCount(stg->levels);
+}
+
+static LevelEntry* _Entry(int stage, int level) {
+    if (stage < 0 || stage >= (int)HQC_Container_VectorCount(mgr.stages)) return NULL;
+
+    Stage* stg = (Stage*)HQC_Container_VectorGet(mgr.stages, stage);
+    if (level < 0 || level >= (int)HQC_Container_VectorCount(stg->levels)) return NULL;
+
+    return (LevelEntry*)HQC_Container_VectorGet(stg->levels, level);
+}
+
+LevelGraphics* LevelMgr_GetLevelGraphics(int stage, int level) {
+    LevelEntry* e = _Entry(stage, level);
+    return e ? _FindGraphics(e->graphicsID) : NULL;
+}
+
+LevelSettings* LevelMgr_GetLevelSettings(int stage, int level) {
+    LevelEntry* e = _Entry(stage, level);
+    return e ? _FindSettings(e->settingsID) : NULL;
+}
+
+int LevelMgr_GetGraphicsIndex(int stage, int level) {
+    LevelGraphics* gx = LevelMgr_GetLevelGraphics(stage, level);
+    if (!gx) return 0;
+
+    for (size_t i = 0; i < HQC_Container_VectorCount(mgr.graphicsList); i++) {
+        LevelGraphics* it = HQC_Container_VectorGet(mgr.graphicsList, i);
+        if (strcmp(it->id, gx->id) == 0) return (int)i;
+    }
+
+    return 0;
+}
+
+void LevelMgr_ClampProgress(int* stage, int* level) {
+    if (!stage || !level) return;
+
+    int stageCount = LevelMgr_GetStageCount();
+    if (stageCount <= 0) { *stage = 0; *level = 0; return; }
+
+    if (*stage < 0) *stage = 0;
+    if (*stage >= stageCount) *stage = stageCount - 1;
+
+    int levelCount = LevelMgr_GetLevelCount(*stage);
+    if (*level < 0) *level = 0;
+    if (levelCount > 0 && *level >= levelCount) *level = levelCount - 1;
 }
 
 int LevelMgr_GetCurrentStage() { return mgr.currentStage + 1; }

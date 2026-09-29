@@ -18,3 +18,10 @@ const char* LevelMgr_GetCurrentLevelID();
 int LevelMgr_GetCurrentStageLevelCount();
 int LevelMgr_GetStageCount();
 int LevelMgr_GetSettingsCount();
+
+// 选关界面用（0-based）
+LevelGraphics* LevelMgr_GetLevelGraphics(int stage, int level);
+LevelSettings* LevelMgr_GetLevelSettings(int stage, int level);
+int LevelMgr_GetLevelCount(int stage);
+int LevelMgr_GetGraphicsIndex(int stage, int level);      // 缩略图索引（0..17 循环）
+void LevelMgr_ClampProgress(int* stage, int* level);

@@ -94,6 +94,8 @@ typedef struct HQC_Color {
 
 HQC_Texture HQC_Artist_LoadTexture(const char* texfile);
 void HQC_Artist_FreeTexture(HQC_Texture texture);
+// 查询纹理尺寸（选关预览按格子缩放需要）
+void HQC_Artist_GetTextureSize(HQC_Texture texture, int* width, int* height);
 HQC_Font    HQC_Artist_MakeFontFromTexture();
 
 // 把当前渲染结果存成 BMP（自动测试取证；配合 SDL_VIDEODRIVER=dummy 亦可）
