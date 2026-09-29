@@ -1,4 +1,5 @@
 #include "AutoTest.h"
+#include "global/HQC_Env.h"
 #include "GameOptions.h"
 
 #include <stdio.h>
@@ -43,7 +44,7 @@ void AutoTest_Init() {
         // 自动测试不许动玩家真实存档：没显式指定就用 /tmp 下的沙箱文件
         // （要测"存档跨进程保留"就自己 export ZUMA_PROGRESS_FILE=...）
         if (!getenv("ZUMA_PROGRESS_FILE"))
-            setenv("ZUMA_PROGRESS_FILE", "/tmp/zumahd-autotest-progress.dat", 0);
+            HQC_Env_Set("ZUMA_PROGRESS_FILE", "/tmp/zumahd-autotest-progress.dat", 0);
 
         AutoTest_Event("AUTOTEST_START", "frames=%d levels=%d stage=%d level=%d difficulty=%d seed=%u",
                        gGameOptions.maxFrames, gGameOptions.levelLimit,

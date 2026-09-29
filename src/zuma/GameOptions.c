@@ -1,4 +1,5 @@
 #include "GameOptions.h"
+#include "global/HQC_Env.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -131,13 +132,13 @@ void GameOptions_Parse(int argc, char** argv) {
 
     // 自动测试默认：无头、静音、不锁帧（否则 30000 帧要跑 8 分钟）
     if (gGameOptions.autotest) {
-        setenv("SDL_VIDEODRIVER", "dummy", 0);   // 已设置则不覆盖
+        HQC_Env_Set("SDL_VIDEODRIVER", "dummy", 0);   // 已设置则不覆盖
         gGameOptions.noAudio      = 1;
         gGameOptions.noFrameLimit = 1;
     }
 
     if (gGameOptions.noAudio)
-        setenv("ZUMA_NO_AUDIO", "1", 1);
+        HQC_Env_Set("ZUMA_NO_AUDIO", "1", 1);
 
     if (gGameOptions.seed == 0)
         gGameOptions.seed = (unsigned int)time(NULL);
