@@ -28,7 +28,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential cmake pkg-config patchelf \
-            libsdl2-dev libsdl2-image-dev libexpat1-dev libgl1-mesa-dev \
+            libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev \
+            libexpat1-dev libgl1-mesa-dev \
             dpkg-dev python3-pil
 
       - name: 取 SDL_ttf（external/SDL_ttf 是 gitlink，仓库没有 .gitmodules）
