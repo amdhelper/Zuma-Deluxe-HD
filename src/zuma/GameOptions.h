@@ -18,6 +18,8 @@ typedef struct GameOptions {
     int startAtMenu;     // 1 = 自动测试也从主菜单开始（用于验证菜单链路）
     int screenshotFrame; // >0 = 在第 N 帧存一张截图（自动测试取证）
     const char* screenshotPath;
+    const char* screenshotResultPath;  // 非空 = 结算对话框弹出的那一帧自动存图（取证用）
+    const char* screenshotNextPath;    // 内部：下一帧渲染完后存这张图（由游戏逻辑触发）
     unsigned int seed;   // 随机种子
 } GameOptions;
 
@@ -27,6 +29,10 @@ void GameOptions_SetDefaults(void);
 void GameOptions_Parse(int argc, char** argv);
 void GameOptions_PrintUsage(const char* program);
 void GameOptions_LogSummary(void);
+
+// 请求"下一帧渲染完成后"存一张截图（游戏逻辑触发取证，如结算对话框弹出）
+// 路径取自 gGameOptions.screenshotResultPath
+void GameOptions_RequestResultScreenshot(void);
 
 // 难度覆盖（移植自 v0.1.0 Game_Init：难度 0..3 → 颜色数 / 通关分数槽 / 开局球数 / 限时）
 // 只在关卡 settings 的副本上应用，不改 LevelMgr 注册表本体。

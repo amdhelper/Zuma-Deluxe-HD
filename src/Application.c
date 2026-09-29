@@ -10,6 +10,7 @@
 #include "zuma/AutoTest.h"
 #include "zuma/Statistics.h"
 #include "zuma/FloatingText.h"
+#include "zuma/Progress.h"
 
 // Forward declaration for minimal scene
 HScene Scene_Register_Minimal();
@@ -105,9 +106,20 @@ static void _Start(void) {
     Statistics_Init();
     Statistics_SetLives(gGameOptions.lives);
 
+    // 进度存档（ROADMAP 2.4）：解锁进度 / 最高分 / 最佳用时
+    Progress_Load();
+
     // 起始大关/小关（1-based → 内部 0-based）
     LevelMgr_Reset();
-    LevelMgr_SetProgress(gGameOptions.startStage - 1, gGameOptions.startLevel - 1);
+
+    int fromStage = gGameOptions.startStage > 0 ? gGameOptions.startStage - 1 : Progress_GetCurrentStage();
+    int fromLevel = gGameOptions.startLevel > 0 ? gGameOptions.startLevel - 1
+                                                : (gGameOptions.startStage > 0 ? 0 : Progress_GetCurrentLevel());
+
+    HQC_Log("Application: starting at %d-%d (options: stage=%d level=%d)",
+            fromStage + 1, fromLevel + 1, gGameOptions.startStage, gGameOptions.startLevel);
+
+    LevelMgr_SetProgress(fromStage, fromLevel);
 
     if (AutoTest_IsActive() && !gGameOptions.startAtMenu) {
         HQC_Log("Application: autotest — starting game scene directly");
@@ -174,6 +186,14 @@ int ApplicationZuma_Start(void) {
                 HQC_Log("Screenshot saved: %s", gGameOptions.screenshotPath);
             else
                 HQC_Log("Screenshot FAILED: %s", gGameOptions.screenshotPath);
+        }
+
+        // 游戏逻辑触发的取证（如结算对话框弹出那一帧）
+        if (gGameOptions.screenshotNextPath) {
+            if (HQC_Artist_SaveScreenshot(gGameOptions.screenshotNextPath, WINDOW_WIDTH, WINDOW_HEIGHT))
+                HQC_Log("Screenshot saved (triggered): %s", gGameOptions.screenshotNextPath);
+
+            gGameOptions.screenshotNextPath = NULL;
         }
 
         if (AutoTest_IsActive() && frameCount >= AutoTest_MaxFrames()) {

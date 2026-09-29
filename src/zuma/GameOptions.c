@@ -19,8 +19,8 @@ static int _streq(const char* a, const char* b) {
 void GameOptions_SetDefaults() {
     gGameOptions.autotest     = 0;
     gGameOptions.maxFrames    = 0;
-    gGameOptions.startStage   = 1;
-    gGameOptions.startLevel   = 1;
+    gGameOptions.startStage   = 0;   // 0 = 未指定 → 用存档进度（见 Application.c _Start）
+    gGameOptions.startLevel   = 0;
     gGameOptions.difficulty   = 0;
     gGameOptions.lives        = 3;
     gGameOptions.levelLimit   = 0;
@@ -41,7 +41,7 @@ void GameOptions_PrintUsage(const char* program) {
         "  --autotest             无头自动测试（脚本输入自动游玩，不锁帧）\n"
         "  --frames N             自动测试帧上限（默认 30000）\n"
         "  --levels N             自动测试最多游玩 N 个小关后退出\n"
-        "  --stage N              起始大关（1-based，默认 1）\n"
+        "  --stage N              起始大关（1-based，0/省略 = 用存档进度）\n"
         "  --level N              起始小关（1-based，默认 1）\n"
         "  --difficulty N         难度 0..3（默认 0）\n"
         "  --lives N              初始命数（默认 3）\n"
@@ -51,6 +51,7 @@ void GameOptions_PrintUsage(const char* program) {
         "  --no-autoplay          自动测试时不瞄准开火（用于验证输局/Game Over）\n"
         "  --start-menu           自动测试也从主菜单开始（验证菜单→选关→开打链路）\n"
         "  --screenshot N PATH    在第 N 帧存一张截图（BMP，取证用）\n"
+        "  --screenshot-result PATH  结算对话框弹出的那一帧自动存一张截图\n"
         "  --help                 显示本帮助\n",
         program ? program : "ZumaHD");
 }
@@ -78,6 +79,8 @@ void GameOptions_Parse(int argc, char** argv) {
         } else if (_streq(a, "--screenshot") && i + 2 < argc) {
             gGameOptions.screenshotFrame = atoi(argv[++i]);
             gGameOptions.screenshotPath  = argv[++i];
+        } else if (_streq(a, "--screenshot-result") && i + 1 < argc) {
+            gGameOptions.screenshotResultPath = argv[++i];
         } else if (_streq(a, "--frames") && i + 1 < argc) {
             gGameOptions.maxFrames = atoi(argv[++i]);
         } else if (_streq(a, "--levels") && i + 1 < argc) {
@@ -115,6 +118,12 @@ void GameOptions_Parse(int argc, char** argv) {
         gGameOptions.seed = (unsigned int)time(NULL);
 
     srand(gGameOptions.seed);
+}
+
+
+void GameOptions_RequestResultScreenshot(void) {
+    if (gGameOptions.screenshotResultPath && gGameOptions.screenshotResultPath[0])
+        gGameOptions.screenshotNextPath = gGameOptions.screenshotResultPath;
 }
 
 

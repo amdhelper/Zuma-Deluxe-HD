@@ -9,12 +9,18 @@
 #include "../Menu.h"
 #include "../GameOptions.h"
 #include "../AutoTest.h"
+#include "../Progress.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 游戏场景（2026-09-29 完整可玩闭环）：
 //   生成有限球（settings->start）→ 打满分数槽（score）→ 停止生成 → 清空链 = 过关；
 //   球进洞 = 掉命（3 命），命尽 = Game Over。
-//   带宝石收集、分数/命/进度 HUD、ESC 暂停菜单、自动测试自动游玩。
+//   带宝石收集、分数/命/进度 HUD、ESC 暂停菜单、结算对话框（ROADMAP 2.5）、
+//   进度存档（2.4，最高分/最佳用时/解锁）、自动测试自动游玩。
 // ═══════════════════════════════════════════════════════════════════════════════
 
 struct {
@@ -36,7 +42,16 @@ struct {
     // 关卡结束
     int   levelComplete;      // 1 = 过关结算中
     int   gameOver;           // 1 = Game Over
-    int   endTimer;
+    int   endTimer;           // 结束动画计入 → 弹出结算对话框
+
+    // 结算对话框（ROADMAP 2.5）
+    HDialogbox resultDialog;
+    int   resultAction;       // 1=下一关 2=重玩本关 3=返回主菜单
+    int   resultPrimaryIndex; // 主按钮下标（自动测试点它）
+    int   resultDialogFrame;  // 对话框出现后的帧数（自动测试脚本点击计时）
+    int   levelFrames;        // 本关用时（帧，60fps）
+    int   levelSeconds;       // 本关用时（秒，用于存档/结算）
+    char  resultLines[8][96]; // 文本框内容（DialogText 只存指针，故在此保管字符串）
 
     int   paused;
     int   pauseAction;        // 1=继续 2=重开 3=返回菜单
@@ -94,6 +109,177 @@ static void _Game_BuildPauseButtons() {
     Button_SetText(quit, "Main Menu");
     Button_OnClick(quit, _Pause_Quit);
     HQC_Container_VectorAdd(game.pauseButtons, &quit);
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+// 结算对话框（ROADMAP 2.5）
+//   旧实现只是屏幕上两行字 + 定时自动跳转：看不到连击/用时/历史最高，
+//   也不能重玩或返回菜单。现在用 Dialogbox（九宫格菜单精灵）+ 按钮。
+////////////////////////////////////////////////////////////////////////////////
+
+static void _Result_Next()   { game.resultAction = 1; }
+static void _Result_Replay() { game.resultAction = 2; }
+static void _Result_Menu()   { game.resultAction = 3; }
+
+
+static void _Game_ClearResultDialog() {
+    if (game.resultDialog) {
+        Dialogbox_Destroy(game.resultDialog);
+        game.resultDialog = NULL;
+    }
+
+    game.resultDialogFrame = 0;
+    game.resultPrimaryIndex = -1;
+}
+
+
+static void _Game_BuildResultDialog() {
+    _Game_ClearResultDialog();
+
+    // ⚠️ 0-based：Progress/存档一律 0-based（LevelMgr_GetCurrentStage() 是 1-based，别混用）
+    int stage = LevelMgr_CurrentStage0();
+    int level = LevelMgr_CurrentLevel0();
+
+    int score    = Statistics_Score();
+    int best     = Progress_GetBestScore(stage, level);
+    int partTime = game.settings ? game.settings->partTime : 0;
+    int secs     = game.levelSeconds;
+
+    HDialogbox dlg = Dialogbox_Create(640, 350);
+    game.resultDialog = dlg;
+
+    Dialogbox_SetTitle(dlg, game.levelComplete ? "LEVEL COMPLETE" : "GAME OVER");
+
+    // 用时：在 partTime 内 = 绿色（原版标准），超过 2 倍 = 红色
+    uint32_t timeColor = C_WHITE;
+    if (partTime > 0) {
+        if (secs <= partTime)        timeColor = C_GREEN;
+        else if (secs > partTime * 2) timeColor = C_RED;
+    }
+
+    const float labX = -150.0f;
+    const float valX =  130.0f;
+
+    Dialogbox_AddText(dlg, "Score", labX, -180);
+    snprintf(game.resultLines[1], 96, "%d", score);
+    Dialogbox_AddTextEx(dlg, game.resultLines[1], valX, -180, C_YELLOW);
+
+    snprintf(game.resultLines[2], 96, "Gems %d", Statistics_Coins());
+    Dialogbox_AddTextEx(dlg, game.resultLines[2], labX, -138, C_WHITE);
+
+    snprintf(game.resultLines[3], 96, "Max combo %d  (chain %d)",
+             Statistics_MaxCombo(), Statistics_MaxChainBonus());
+    Dialogbox_AddTextEx(dlg, game.resultLines[3], valX, -138, C_WHITE);
+
+    snprintf(game.resultLines[4], 96, "Time %d:%02d", secs / 60, secs % 60);
+    Dialogbox_AddTextEx(dlg, game.resultLines[4], labX, -96, timeColor);
+
+    snprintf(game.resultLines[5], 96, "Best %d", best);
+    Dialogbox_AddTextEx(dlg, game.resultLines[5], valX, -96, C_WHITE);
+
+    // 按钮：主按钮放最后（= 最下面），符合"主要动作在底部"
+    HButton replay = Button_Create(640, 0);
+    Button_SetText(replay, "Replay Level");
+    Button_OnClick(replay, _Result_Replay);
+    Dialogbox_AddButton(dlg, replay);
+
+    HButton menu = Button_Create(640, 0);
+    Button_SetText(menu, "Main Menu");
+    Button_OnClick(menu, _Result_Menu);
+    Dialogbox_AddButton(dlg, menu);
+
+    HButton primary = Button_Create(640, 0);
+
+    if (game.levelComplete) {
+        Button_SetText(primary, "Next Level");
+        Button_OnClick(primary, _Result_Next);
+        game.resultPrimaryIndex = 2;
+    } else {
+        Button_SetText(primary, "Retry");
+        Button_OnClick(primary, _Result_Replay);
+        game.resultPrimaryIndex = 2;
+    }
+
+    Dialogbox_AddButton(dlg, primary);
+
+    // ── 结算对话框（ROADMAP 2.5）——弹出来那一帧存图取证
+    GameOptions_RequestResultScreenshot();
+
+    AutoTest_Event("RESULT_DIALOG",
+                   "result=%s score=%d gems=%d maxcombo=%d maxchain=%d time=%d partTime=%d best=%d",
+                   game.levelComplete ? "complete" : "gameover",
+                   score, Statistics_Coins(), Statistics_MaxCombo(),
+                   Statistics_MaxChainBonus(), secs, partTime, best);
+}
+
+
+// 自动测试：结算对话框出现后点主按钮（Next Level / Retry）
+static void _Game_ResultAutoplay() {
+    if (!AutoTest_IsActive() || !game.resultDialog)
+        return;
+
+    game.resultDialogFrame++;
+
+    if (game.levelComplete) {
+        float bx = 0, by = 0;
+        Dialogbox_GetButtonPos(game.resultDialog, game.resultPrimaryIndex, &bx, &by);
+
+        if (game.resultDialogFrame == 20) AutoTest_SetPointer((int)bx, (int)by, 1, 0);
+        if (game.resultDialogFrame == 22) AutoTest_SetPointer((int)bx, (int)by, 0, 0);
+        if (game.resultDialogFrame == 30) AutoTest_Event("RESULT_CLICK_PRIMARY", "x=%d y=%d", (int)bx, (int)by);
+    } else {
+        AutoTest_ReleasePointer();
+
+        // Game Over：留 90 帧给截图取证，然后收工（旧实现是直接退出，没有对话框）
+        if (game.resultDialogFrame > 90)
+            AutoTest_RequestStop();
+    }
+}
+
+
+// 结算动作（按钮回调 → 下一关 / 重玩 / 回菜单）
+static void _Game_HandleResultAction(int action) {
+    int stage = LevelMgr_CurrentStage0();     // 0-based
+    int level = LevelMgr_CurrentLevel0();
+
+    if (action == 1) {                                     // 下一关
+        AutoTest_Event("RESULT_NEXT", "from=%d-%d", stage + 1, level + 1);
+
+        if (AutoTest_IsActive() && gGameOptions.levelLimit > 0 &&
+            Statistics_LevelsCompleted() >= gGameOptions.levelLimit) {
+            AutoTest_Event("LEVEL_LIMIT_REACHED", "completed=%d", Statistics_LevelsCompleted());
+            AutoTest_RequestStop();
+            return;
+        }
+
+        if (LevelMgr_AdvanceLevel()) {
+            Scene_Change(SC_GAME);
+        } else {
+            HQC_Log("All stages complete! Adventure finished.");
+            AutoTest_Event("ADVENTURE_COMPLETE", "coins=%d", Statistics_Coins());
+
+            if (AutoTest_IsActive()) { AutoTest_RequestStop(); return; }
+            Scene_Change(SC_MENU);
+        }
+        return;
+    }
+
+    if (action == 2) {                                     // 重玩本关
+        AutoTest_Event("RESULT_REPLAY", "stage=%d level=%d", stage + 1, level + 1);
+
+        // Game Over 后重玩 = 新的一局（补满命）
+        if (Statistics_Lives() <= 0) {
+            Statistics_Init();
+            Statistics_SetLives(gGameOptions.lives);
+        }
+
+        Scene_Change(SC_GAME);
+        return;
+    }
+
+    AutoTest_Event("RESULT_MENU", "stage=%d level=%d", stage + 1, level + 1);
+    Scene_Change(SC_MENU);
 }
 
 
@@ -169,6 +355,11 @@ static int _Game_LoadLevel() {
     game.pauseAction   = 0;
     game.frame         = 0;
     game.comboWindow   = 0;
+
+    game.levelFrames   = 0;
+    game.levelSeconds  = 0;
+
+    _Game_ClearResultDialog();
 
     Statistics_ResetLevel();
 
@@ -297,6 +488,11 @@ static void _Game_CheckEnd() {
     if (chainEmpty && endReached) {
         int lives = Statistics_LoseLife();
 
+        game.levelSeconds = game.levelFrames / 60;
+
+        Progress_ReportLevel(LevelMgr_CurrentStage0(), LevelMgr_CurrentLevel0(),
+                             Statistics_Score(), game.levelSeconds, 0);
+
         AutoTest_Event("LIFE_LOST", "lives=%d score=%d stage=%d level=%d",
                        lives, Statistics_Score(),
                        LevelMgr_GetCurrentStage(), LevelMgr_GetCurrentLevelIndex());
@@ -306,7 +502,7 @@ static void _Game_CheckEnd() {
             _Game_RestartLevel();
         } else {
             game.gameOver = 1;
-            game.endTimer = 300;
+            game.endTimer = 60;      // 短暂定格 → 结算对话框
 
             Store_PlayMusic(MUS_GAME_OVER);
             HQC_DJ_PlaySound(Store_GetSoundByID(SND_CHANT8));
@@ -333,7 +529,9 @@ static void _Game_CheckEnd() {
     // ── 赢：分数过线 + 链清空 ──────────────────────────────────────────────
     if (chainEmpty && BallChainGenerator_IsFinished(game.generator)) {
         game.levelComplete = 1;
-        game.endTimer      = 240;
+        game.endTimer      = 60;      // 短暂定格 → 结算对话框
+
+        game.levelSeconds = game.levelFrames / 60;
 
         Statistics_AddLevelCompleted();
 
@@ -347,45 +545,41 @@ static void _Game_CheckEnd() {
         AutoTest_Observe("last_score", Statistics_Score());
         AutoTest_Observe("levels_completed", Statistics_LevelsCompleted());
         AutoTest_Observe("coins", Statistics_Coins());
+
+        // 进度存档：最高分 / 最佳用时 / 解锁下一关（ROADMAP 2.4）
+        Progress_ReportLevel(LevelMgr_CurrentStage0(), LevelMgr_CurrentLevel0(),
+                             Statistics_Score(), game.levelSeconds, 1);
     }
 }
 
 
-// 结束计时（过关 / Game Over）
+// 结束计时（过关 / Game Over）→ 弹出结算对话框 → 等玩家选按钮
 static void _Game_UpdateEnd() {
     if (!game.levelComplete && !game.gameOver)
         return;
+
+    // 对话框已弹出：更新按钮，等动作
+    if (game.resultDialog) {
+        Dialogbox_Update(game.resultDialog);
+
+        _Game_ResultAutoplay();
+
+        if (game.resultAction) {
+            int action = game.resultAction;
+            game.resultAction = 0;
+
+            _Game_ClearResultDialog();
+            _Game_HandleResultAction(action);
+        }
+        return;
+    }
 
     game.endTimer--;
 
     if (game.endTimer > 0)
         return;
 
-    if (game.levelComplete) {
-        // 自动测试跑够关数就收工
-        if (AutoTest_IsActive() && gGameOptions.levelLimit > 0 &&
-            Statistics_LevelsCompleted() >= gGameOptions.levelLimit) {
-            AutoTest_Event("LEVEL_LIMIT_REACHED", "completed=%d", Statistics_LevelsCompleted());
-            AutoTest_RequestStop();
-            return;
-        }
-
-        if (LevelMgr_AdvanceLevel()) {
-            HQC_Log("Advancing to next level...");
-            Scene_Change(SC_GAME);
-        } else {
-            HQC_Log("All stages complete! Adventure finished.");
-            AutoTest_Event("ADVENTURE_COMPLETE", "coins=%d", Statistics_Coins());
-
-            if (AutoTest_IsActive()) { AutoTest_RequestStop(); return; }
-            Scene_Change(SC_MENU);
-        }
-        return;
-    }
-
-    // Game Over
-    if (AutoTest_IsActive()) { AutoTest_RequestStop(); return; }
-    Scene_Change(SC_MENU);
+    _Game_BuildResultDialog();
 }
 
 
@@ -534,6 +728,8 @@ static void Game_Update__() {
 
     // ── 主循环更新 ─────────────────────────────────────────────────────────
     _Game_Autoplay();
+
+    game.levelFrames++;      // 本关用时（结算 / 最佳用时）
 
     Frog_Update(game.frog);
     BallChain_Update(game.chain);
@@ -733,22 +929,16 @@ static void Game_Draw__() {
     if (game.levelComplete) {
         HQC_Artist_SetColorHex(C_YELLOW);
         HQC_Artist_DrawText(Store_GetFontByID(FONT_NATIVE_ALIEN_48), "LEVEL COMPLETE!", 640, 300);
-
-        char buff[64];
-        snprintf(buff, sizeof(buff), "score %d   gems %d", Statistics_Score(), Statistics_Coins());
-        HQC_Artist_SetColorHex(C_WHITE);
-        HQC_Artist_DrawText(Store_GetFontByID(FONT_CANCUN_12), buff, 640, 380);
     }
 
     if (game.gameOver) {
         HQC_Artist_SetColorHex(C_RED);
         HQC_Artist_DrawText(Store_GetFontByID(FONT_NATIVE_ALIEN_48), "GAME OVER", 640, 300);
-
-        char buff[64];
-        snprintf(buff, sizeof(buff), "final score %d   gems %d", Statistics_Score(), Statistics_Coins());
-        HQC_Artist_SetColorHex(C_WHITE);
-        HQC_Artist_DrawText(Store_GetFontByID(FONT_CANCUN_12), buff, 640, 380);
     }
+
+    // 结算对话框（过关/Game Over）
+    if (game.resultDialog)
+        Dialogbox_Draw(game.resultDialog);
 
     if (game.texUI_LevelName)
         HQC_Artist_DrawTexture(game.texUI_LevelName, 640, 60);
@@ -761,6 +951,7 @@ static void Game_Draw__() {
 
 static void Game_Free_() {
     _Game_ClearPauseButtons();
+    _Game_ClearResultDialog();
     _Game_UnloadObjects();
 
     if (game.texUI_LevelName) { HQC_Artist_FreeTexture(game.texUI_LevelName); game.texUI_LevelName = NULL; }

@@ -5,6 +5,8 @@
 #include "../LevelMgr.h"
 #include "../GameOptions.h"
 #include "../AutoTest.h"
+#include "../Statistics.h"
+#include "../Progress.h"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -249,19 +251,47 @@ private void _DrawAdventurePane() {
         int x = gridX0 + col * (cellW + gapX);
         int y = gridY0 + row * (cellH + gapY);
 
-        bool selected = (i == menu.selLevel);
-        bool hovered  = _MouseInRect(x, y, cellW, cellH);
+        bool unlocked = Progress_IsUnlocked(menu.stage, i);
+        bool selected = (i == menu.selLevel) && unlocked;
+        bool hovered  = unlocked && _MouseInRect(x, y, cellW, cellH);
 
         HQC_Texture tex = NULL;
         if (menu.previews && (size_t)i < HQC_Container_VectorCount(menu.previews))
             tex = *(HQC_Texture*)HQC_Container_VectorGet(menu.previews, i);
 
+        if (!unlocked) {
+            // 未解锁：压暗预览 + LOCKED 标签，且不可点
+            HQC_Artist_DrawSetAlpha(0.30f);
+            _DrawPreview(tex, x, y, cellW, cellH, false);
+            HQC_Artist_DrawSetAlpha(1.0f);
+
+            HQC_Artist_SetColorHex(0x808080);
+            HQC_Artist_DrawText(Store_GetFontByID(FONT_CANCUN_10), "LOCKED", (float)x, (float)y);
+            continue;
+        }
+
         _DrawPreview(tex, x, y, cellW, cellH, selected || hovered);
 
+        // 关卡号
         snprintf(buff, sizeof(buff), "%d-%d", menu.stage + 1, i + 1);
         HQC_Artist_SetColorHex((selected || hovered) ? C_YELLOW : C_WHITE);
         HQC_Artist_DrawText(Store_GetFontByID(FONT_CANCUN_10), buff,
                             (float)x, (float)(y + cellH / 2 + 20));
+
+        // 该关成绩（最高分 / 最佳用时）
+        int best = Progress_GetBestScore(menu.stage, i);
+        int bestSecs = Progress_GetBestSeconds(menu.stage, i);
+
+        if (best > 0) {
+            if (bestSecs > 0)
+                snprintf(buff, sizeof(buff), "best %d  %d:%02d", best, bestSecs / 60, bestSecs % 60);
+            else
+                snprintf(buff, sizeof(buff), "best %d", best);
+
+            HQC_Artist_SetColorHex(0xB0FFB0);
+            HQC_Artist_DrawText(Store_GetFontByID(FONT_CANCUN_8), buff,
+                                (float)x, (float)(y + cellH / 2 + 38));
+        }
 
         if (hovered && !menu.clicked && HQC_Input_MouseLeftPressed()) {
             menu.clicked = 1;
@@ -312,6 +342,12 @@ private void _DrawAdventurePane() {
         gGameOptions.difficulty = menu.difficulty;
 
         LevelMgr_SetProgress(menu.stage, menu.selLevel);
+
+        // 从菜单开打 = 新的一局：分数/命/连击全部重置（否则上一局的命不会补回来）
+        Statistics_Init();
+        Statistics_SetLives(gGameOptions.lives);
+
+        Progress_SetCurrent(menu.stage, menu.selLevel);
 
         AutoTest_Event("MENU_PLAY", "stage=%d level=%d difficulty=%d",
                        menu.stage + 1, menu.selLevel + 1, menu.difficulty);
@@ -421,8 +457,8 @@ private void _Load() {
     HQC_Log("SceneMenu: loading");
 
     menu.pane         = PANE_MAIN;
-    menu.stage        = 0;
-    menu.selLevel     = 0;
+    menu.stage        = Progress_GetCurrentStage();
+    menu.selLevel     = Progress_GetCurrentLevel();
     menu.difficulty   = gGameOptions.difficulty;
     menu.volume       = 10;
     menu.frame        = 0;

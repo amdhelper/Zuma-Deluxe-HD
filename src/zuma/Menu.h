@@ -66,8 +66,12 @@ void Dialogbox_AddCheckbox(HDialogbox hdialogbox, HCheckbox hcheckbox);
 void Dialogbox_SetTitle(HDialogbox hdialogbox, const char* title);
 
 void Dialogbox_AddText(HDialogbox hdialogbox, const char* text, float x, float y);
+// 带颜色的文本（结算界面用：用时达标显示绿色）
+void Dialogbox_AddTextEx(HDialogbox hdialogbox, const char* text, float x, float y, uint32_t colorHex);
 
 void Dialogbox_Update(HDialogbox hdialogbox);
 void Dialogbox_Draw(HDialogbox hdialogbox);
+// 取第 index 个按钮的屏幕坐标（自动测试脚本点击用；布局由 Dialogbox 决定）
+void Dialogbox_GetButtonPos(HDialogbox hdialogbox, int index, float* x, float* y);
 
 void Dialogbox_Destroy(HDialogbox hdialogbox);

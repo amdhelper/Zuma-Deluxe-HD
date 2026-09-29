@@ -465,6 +465,8 @@ void LevelMgr_ClampProgress(int* stage, int* level) {
 
 int LevelMgr_GetCurrentStage() { return mgr.currentStage + 1; }
 int LevelMgr_GetCurrentLevelIndex() { return mgr.currentLevel + 1; }
+int LevelMgr_CurrentStage0() { return mgr.currentStage; }
+int LevelMgr_CurrentLevel0() { return mgr.currentLevel; }
 const char* LevelMgr_GetCurrentLevelID() {
     LevelGraphics* gx = LevelMgr_GetCurrentGraphics();
     return gx ? gx->id : "unknown";
