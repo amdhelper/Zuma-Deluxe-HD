@@ -777,8 +777,13 @@ static void _Ball_Draw(Ball* ball) {
     }
 
     size_t frames = HQC_Animation_FramesCount(ball->animation);
-    if (frames > 0)
-        HQC_Animation_SetFrame(ball->animation, ((int)ball->pos) % (int)frames);
+    if (frames > 0) {
+        // 取正模（pos 若因物理回滚变成负数，C 的 % 会返回负帧号 → 渲染 FATAL）
+        int frame = ((int)ball->pos % (int)frames);
+        if (frame < 0) frame += (int)frames;
+
+        HQC_Animation_SetFrame(ball->animation, frame);
+    }
 
     HQC_Artist_DrawSetAngle(angle);
     HQC_Artist_DrawSetAlpha(alpha);

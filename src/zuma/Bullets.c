@@ -164,10 +164,16 @@ static void _Bullet_UpdateInserting(Bullet* bullet, int index) {
 	// 插入动画朝向
 	bullet->direction = HQC_FAtan2(insertDirPoint.y - bullet->pos.y, insertDirPoint.x - bullet->pos.x);
 
-	HQC_Animation_SetFrame(
-		bullet->anim, 
-		((int)insertCurvePos) % (int)HQC_Animation_FramesCount(bullet->anim)
-	);
+	// 🔴 取模必须"取正"：insertCurvePos 可能是负数（目标球贴链头时 - BALLS_CHAIN_PAD），
+	//    C 的 (-30) % 50 = -30 → 帧号 -30 → 渲染时 FATAL（CI/Gauntlet 实测踩到过）
+	{
+		int frames = (int)HQC_Animation_FramesCount(bullet->anim);
+		int frame  = frames > 0 ? ((int)insertCurvePos % frames) : 0;
+
+		if (frame < 0) frame += frames;
+
+		HQC_Animation_SetFrame(bullet->anim, frame);
+	}
 
     // 向插入点靠拢
     bullet->pos.x = HQC_Lerp(bullet->pos.x, insertPos.x, 0.35f);

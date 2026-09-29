@@ -104,10 +104,25 @@ void    HQC_Animation_Tick(HQC_Animation anim) {
 
 void    HQC_Artist_DrawAnimation(HQC_Animation anim, float x, float y) {
     Animation* animation = Cast__(anim);
+    if (!animation) return;
+
+    int count = (int)animation->frameCount;
+    if (count <= 0) return;
+
+    int index = (int)animation->currentFrame;
+
+    // 兜底：帧号越界不致命（C 的负数取模、Tick 精度等都可能给到范围外的值）。
+    // ⚠️ 这是"最后一道防线"，根因在各调用点的取模写法（见 Bullets.c 插入动画）。
+    if (index < 0 || index >= count) {
+        HQC_Log("DrawAnimation: frame %d out of range 0..%d, clamped", index, count - 1);
+
+        if (index < 0) index = 0;
+        else           index = count - 1;
+    }
 
     HQC_Sprite* spr = ((HQC_Sprite*)HQC_Container_VectorGet(
-        animation->frameList, (int)animation->currentFrame));
-    
+        animation->frameList, index));
+
     HQC_Artist_DrawSprite(*spr, x, y);
 }
 
