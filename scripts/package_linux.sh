@@ -27,6 +27,16 @@ if [ -z "$VERSION" ]; then
 fi
 [ -z "$VERSION" ] && VERSION="0.1.0"
 
+# deb 要求版本号以数字开头（tag 名/分支名可能不是）
+case "$VERSION" in
+    [0-9]*) ;;
+    *)
+        echo "  ⚠️  版本号 '$VERSION' 不以数字开头，退回 CMakeLists 里的版本"
+        VERSION="$(sed -n 's/.*VERSION \([0-9.]*\).*/\1/p' "$ROOT/CMakeLists.txt" | head -1)"
+        [ -z "$VERSION" ] && VERSION="0.1.0"
+        ;;
+esac
+
 NAME="zuma-deluxe-hd-${VERSION}-linux-x86_64"
 STAGE="$DIST/$NAME"
 DEB_ROOT="$DIST/deb-root"

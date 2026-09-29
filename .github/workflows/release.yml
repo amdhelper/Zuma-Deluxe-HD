@@ -56,18 +56,20 @@ jobs:
           grep -q "BALL_INTO_PIT" /tmp/smoke2.log
 
       - name: 出包（tar.gz + deb + 校验和）
+        env:
+          # workflow_dispatch 时 GITHUB_REF_NAME=master，必须用输入的 tag 当版本号
+          # （deb 要求版本号以数字开头，否则直接报错）
+          VERSION: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
-          VERSION="${GITHUB_REF_NAME#v}" scripts/package_linux.sh
+          VERSION="${VERSION#v}" scripts/package_linux.sh
           ls -la dist/
 
       - name: 生成 Release（标题 + 说明 + 附件）
         env:
           GH_TOKEN: ${{ github.token }}
+          REL_TAG: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
-          TAG="${GITHUB_REF_NAME}"
-          if [ -z "$TAG" ] || [ "$TAG" = "master" ] || [ "$TAG" = "main" ]; then
-              TAG="${{ github.event.inputs.tag }}"
-          fi
+          TAG="$REL_TAG"
           NOTES=dist/RELEASE_NOTES.md
           cp docs/RELEASE_NOTES.md "$NOTES"
           sed -i "s/@VERSION@/${TAG#v}/g" "$NOTES"
