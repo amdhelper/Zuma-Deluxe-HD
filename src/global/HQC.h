@@ -96,6 +96,9 @@ HQC_Texture HQC_Artist_LoadTexture(const char* texfile);
 void HQC_Artist_FreeTexture(HQC_Texture texture);
 HQC_Font    HQC_Artist_MakeFontFromTexture();
 
+// 把当前渲染结果存成 BMP（自动测试取证；配合 SDL_VIDEODRIVER=dummy 亦可）
+bool HQC_Artist_SaveScreenshot(const char* filepath, int width, int height);
+
 void HQC_Artist_FreeFont(HQC_Font font);
 void HQC_Artist_SetImageFont(HQC_Font font);
 

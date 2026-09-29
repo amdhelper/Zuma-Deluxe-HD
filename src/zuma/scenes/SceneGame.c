@@ -52,6 +52,8 @@ struct {
 
 static void GoBack_() { Scene_Change(SC_TEST); }
 
+static void _Game_LogBallSamples(void);   // 自动测试取证（定义在绘制之前）
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // 助手
@@ -560,10 +562,38 @@ static void Game_Update__() {
 
     _Game_CheckEnd();
 
+    _Game_LogBallSamples();
+
     AutoTest_Observe("score", Statistics_Score());
     AutoTest_Observe("lives", Statistics_Lives());
     AutoTest_Observe("chain_len", BallChain_Length(game.chain));
     AutoTest_Observe("front_progress_x1000", (int)(BallChain_FrontProgress(game.chain) * 1000));
+}
+
+
+// 自动测试取证：把球链上若干球的位置/颜色打出来，配合截图做像素级校验
+// （验证"画出来的球 = 模拟的球"，旧 bug 正是球位置回绕导致画面与模拟不符）
+static void _Game_LogBallSamples() {
+    if (!AutoTest_IsActive()) return;
+    if (gGameOptions.screenshotFrame <= 0) return;
+    if (game.frame != gGameOptions.screenshotFrame) return;
+
+    int len = BallChain_Length(game.chain);
+    int logged = 0;
+
+    for (int i = 0; i < len && logged < 8; i++) {
+        HBall ball = BallChain_GetBallAt(game.chain, i);
+        if (!ball || Ball_IsExploding(ball)) continue;
+
+        v2f_t p = Ball_GetPositionCoords(ball);
+        AutoTest_Event("BALL_SAMPLE", "idx=%d x=%d y=%d color=%d pos=%d",
+                       i, (int)p.x, (int)p.y, (int)Ball_GetColor(ball),
+                       (int)Ball_GetPositionOnCurve(ball));
+        logged++;
+    }
+
+    AutoTest_Event("BALL_SAMPLE_DONE", "frame=%d chain_len=%d logged=%d",
+                   game.frame, len, logged);
 }
 
 

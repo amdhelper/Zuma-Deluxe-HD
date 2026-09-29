@@ -373,6 +373,31 @@ void HQC_Artist_Display() {
 }
 
 
+// 画面存盘（自动测试取证）：SDL_RenderReadPixels 对软件渲染器同样有效
+bool HQC_Artist_SaveScreenshot(const char* filepath, int width, int height) {
+    if (!graphics.render || !filepath)
+        return false;
+
+    SDL_Surface* surface = SDL_CreateRGBSurfaceWithFormat(
+        0, width, height, 32, SDL_PIXELFORMAT_ARGB8888);
+
+    if (!surface)
+        return false;
+
+    if (SDL_RenderReadPixels(graphics.render, NULL, SDL_PIXELFORMAT_ARGB8888,
+                             surface->pixels, surface->pitch) != 0) {
+        SDL_FreeSurface(surface);
+        return false;
+    }
+
+    bool ok = (SDL_SaveBMP(surface, filepath) == 0);
+
+    SDL_FreeSurface(surface);
+
+    return ok;
+}
+
+
 ///////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////
 

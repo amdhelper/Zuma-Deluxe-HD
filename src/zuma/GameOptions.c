@@ -26,6 +26,8 @@ void GameOptions_SetDefaults() {
     gGameOptions.noAudio      = 0;
     gGameOptions.noFrameLimit = 0;
     gGameOptions.autoplay     = 1;
+    gGameOptions.screenshotFrame = 0;
+    gGameOptions.screenshotPath  = "/tmp/zuma-shot.bmp";
     gGameOptions.seed         = 0;
 }
 
@@ -45,6 +47,7 @@ void GameOptions_PrintUsage(const char* program) {
         "  --no-audio             关闭音频\n"
         "  --no-frame-limit       不锁 60fps\n"
         "  --no-autoplay          自动测试时不瞄准开火（用于验证输局/Game Over）\n"
+        "  --screenshot N PATH    在第 N 帧存一张截图（BMP，取证用）\n"
         "  --help                 显示本帮助\n",
         program ? program : "ZumaHD");
 }
@@ -67,6 +70,9 @@ void GameOptions_Parse(int argc, char** argv) {
             gGameOptions.noFrameLimit = 1;
         } else if (_streq(a, "--no-autoplay")) {
             gGameOptions.autoplay = 0;
+        } else if (_streq(a, "--screenshot") && i + 2 < argc) {
+            gGameOptions.screenshotFrame = atoi(argv[++i]);
+            gGameOptions.screenshotPath  = argv[++i];
         } else if (_streq(a, "--frames") && i + 1 < argc) {
             gGameOptions.maxFrames = atoi(argv[++i]);
         } else if (_streq(a, "--levels") && i + 1 < argc) {

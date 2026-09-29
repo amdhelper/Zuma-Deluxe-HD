@@ -15,6 +15,8 @@ typedef struct GameOptions {
     int noAudio;         // 1 = 关闭音频
     int noFrameLimit;    // 1 = 不锁 60fps
     int autoplay;        // 1 = 自动测试时自动瞄准开火（默认 1；0 = 只看不动，用于测输局）
+    int screenshotFrame; // >0 = 在第 N 帧存一张截图（自动测试取证）
+    const char* screenshotPath;
     unsigned int seed;   // 随机种子
 } GameOptions;
 

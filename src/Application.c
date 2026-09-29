@@ -168,6 +168,14 @@ int ApplicationZuma_Start(void) {
         if (!gGameOptions.noFrameLimit && app.frameTime < FRAME_DELAY)
             HQC_Delay(FRAME_DELAY - app.frameTime);
 
+        // 截图取证（自动测试/人工检查画面）
+        if (gGameOptions.screenshotFrame > 0 && frameCount == gGameOptions.screenshotFrame) {
+            if (HQC_Artist_SaveScreenshot(gGameOptions.screenshotPath, WINDOW_WIDTH, WINDOW_HEIGHT))
+                HQC_Log("Screenshot saved: %s", gGameOptions.screenshotPath);
+            else
+                HQC_Log("Screenshot FAILED: %s", gGameOptions.screenshotPath);
+        }
+
         if (AutoTest_IsActive() && frameCount >= AutoTest_MaxFrames()) {
             HQC_Log("Application: autotest frame limit reached (%d)", frameCount);
             AutoTest_Event("FRAME_LIMIT", "frames=%d", frameCount);
