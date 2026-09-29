@@ -123,6 +123,46 @@ static void _ParseAttributes_TreasurePoint(const char** attr) {
     HQC_Container_VectorAdd(gx->coinsPosList, &p);
 }
 
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// <Cutout image="left|right|tunnel.." pri="1" x=".." y=".." />（ROADMAP 3.7）
+//   遮挡层：画在球链**之上**的贴图（隧道壁/桥/蛇身），球从它下面"钻过去"。
+//   坐标系与 TreasurePoint 相同（(x+104)*1.5, y*1.5）。
+//   ⚠️ 素材现状：本仓库的 content/levels/*/ 里**没有** left.png/right.png/tunnel*.png/
+//      serpentsT|M|B.png 这些文件（只有关卡底图/顶图）。所以贴图加载失败时只记一次日志、
+//      跳过绘制，不报错——代码路径完整，补上素材即生效（用合成贴图验证过）。
+// ═══════════════════════════════════════════════════════════════════════════════
+static void _ParseAttributes_Cutout(const char** attr) {
+    LevelGraphics* gx = _LastGraphics();
+    if (!gx) return;
+
+    if (!gx->cutouts)
+        gx->cutouts = HQC_Container_CreateVector(sizeof(LevelCutout));
+
+    LevelCutout cut;
+    memset(&cut, 0, sizeof(cut));
+    cut.pri = 1;
+
+    for (int i = 0; attr[i]; i += 2) {
+        if (strcmp(attr[i], "image") == 0)      cut.image = HQC_StringClone(attr[i+1]);
+        else if (strcmp(attr[i], "pri") == 0)   cut.pri = atoi(attr[i+1]);
+        else if (strcmp(attr[i], "x") == 0)     cut.rawPos.x = atof(attr[i+1]);
+        else if (strcmp(attr[i], "y") == 0)     cut.rawPos.y = atof(attr[i+1]);
+    }
+
+    if (!cut.image) return;
+
+    // 与 TreasurePoint 同一套换算
+    cut.pos.x = (cut.rawPos.x + 104.0f) * 1.5f;
+    cut.pos.y = cut.rawPos.y * 1.5f;
+
+    char buffer[256];
+    snprintf(buffer, sizeof(buffer), "levels/%s/%s.png", gx->id, cut.image);
+    cut.file = HQC_StringClone(buffer);
+
+    HQC_Container_VectorAdd(gx->cutouts, &cut);
+}
+
 static void _ParseAttributes_Settings(const char** attr) {
     LevelSettings set;
     memset(&set, 0, sizeof(set));
@@ -245,6 +285,8 @@ static void _StartElement(void *userData, const char *name, const char **atts) {
         _ParseAttributes_Settings(atts);
     } else if (strcmp(name, "TreasurePoint") == 0) {
         _ParseAttributes_TreasurePoint(atts);
+    } else if (strcmp(name, "Cutout") == 0) {
+        _ParseAttributes_Cutout(atts);
     } else if (strcmp(name, "StageProgression") == 0) {
         _ParseAttributes_StageProgression(atts);
     }

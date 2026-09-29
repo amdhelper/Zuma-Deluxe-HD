@@ -1,4 +1,5 @@
 #include "Level.h"
+#include "AutoTest.h"
 
 #include <math.h>
 
@@ -112,6 +113,9 @@ typedef struct Level {
     HQC_Texture texture;
     HQC_Texture textureTopLevel;
 
+    // 遮挡层（<Cutout>，ROADMAP 3.7）：与 graphics->cutouts 一一对应（加载失败为 NULL）
+    HQC_VECTOR(HQC_Texture) cutoutTextures;
+
     Curve* curveA;
     Curve* curveB;
 } Level;
@@ -153,6 +157,33 @@ HLevel Level_Load(LevelSettings* settings, LevelGraphics* graphics) {
                         _CurveLoadFromFile(graphics->curveBFile) :
                         NULL;
 
+    // ── 遮挡层（<Cutout>，ROADMAP 3.7）────────────────────────────────────
+    level->cutoutTextures = NULL;
+
+    if (graphics->cutouts) {
+        size_t n = HQC_Container_VectorCount(graphics->cutouts);
+
+        level->cutoutTextures = HQC_Container_CreateVector(sizeof(HQC_Texture));
+
+        int loaded = 0, missing = 0;
+
+        for (size_t i = 0; i < n; i++) {
+            LevelCutout* cut = HQC_Container_VectorGet(graphics->cutouts, i);
+            HQC_Texture tex = HQC_Artist_LoadTexture(cut->file);
+
+            if (tex) loaded++;
+            else     missing++;
+
+            HQC_Container_VectorAdd(level->cutoutTextures, &tex);
+        }
+
+        AutoTest_Event("CUTOUT_LAYERS", "declared=%d loaded=%d missing=%d", (int)n, loaded, missing);
+
+        if (missing > 0)
+            HQC_Log("Level: %d/%d cutout textures missing (素材缺失；补上 levels/%s/*.png 即生效)",
+                    missing, (int)n, graphics->id);
+    }
+
     HQC_Log("Level loaded successfully");
     return level;
 }
@@ -163,6 +194,15 @@ void Level_Free(HLevel hlevel) {
 
     if (level->texture) HQC_Artist_FreeTexture(level->texture);
     if (level->textureTopLevel) HQC_Artist_FreeTexture(level->textureTopLevel);
+
+    if (level->cutoutTextures) {
+        size_t n = HQC_Container_VectorCount(level->cutoutTextures);
+        for (size_t i = 0; i < n; i++) {
+            HQC_Texture* tex = HQC_Container_VectorGet(level->cutoutTextures, i);
+            if (*tex) HQC_Artist_FreeTexture(*tex);
+        }
+        HQC_Container_FreeVector(level->cutoutTextures);
+    }
     
     _CurveFree(level->curveA);
     _CurveFree(level->curveB);
@@ -188,6 +228,31 @@ void Level_DrawTopLayer(HLevel hlevel, float x, float y) {
         return;
 
     HQC_Artist_DrawTexture(level->textureTopLevel, x, y);
+}
+
+
+// 遮挡层（<Cutout>，ROADMAP 3.7）：按 pri 从小到大画在球链之上
+// （贴图自带 alpha，球在遮挡区域里"钻过隧道"。素材缺失时对应项为 NULL，跳过）
+void Level_DrawCutouts(HLevel hlevel) {
+    Level* level = (Level*)hlevel;
+
+    if (!level || !level->cutoutTextures) return;
+
+    size_t n = HQC_Container_VectorCount(level->cutoutTextures);
+    if (n == 0) return;
+
+    // levels.xml 里 pri 只有 1/2/3 几档，按档画即可（小的先画 = 在下面）
+    for (int pri = 1; pri <= 9; pri++) {
+        for (size_t i = 0; i < n; i++) {
+            LevelCutout* cut = HQC_Container_VectorGet(level->graphics->cutouts, (int)i);
+            HQC_Texture* tex = HQC_Container_VectorGet(level->cutoutTextures, (int)i);
+
+            if (!*tex) continue;
+            if (cut->pri != pri) continue;
+
+            HQC_Artist_DrawTexture(*tex, cut->pos.x, cut->pos.y);
+        }
+    }
 }
 
 

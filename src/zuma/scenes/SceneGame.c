@@ -1105,6 +1105,9 @@ static void Game_Draw__() {
         BallChain_Draw(game.chain);
     }
 
+    // <Cutout> 遮挡层（ROADMAP 3.7）：画在球链之上（隧道壁/桥/蛇身）
+    Level_DrawCutouts(game.level);
+
     if (game.frog)      Frog_Draw(game.frog);
     if (game.bulletList) BulletList_Draw(game.bulletList);
     if (game.frog)      Frog_DrawTop(game.frog);

@@ -1,0 +1,80 @@
+name: release
+
+# 打 tag（v0.2.0 这种）→ 构建 → 出包 → 自动发到 GitHub Release 页
+# 手动补发：Actions 页面点 Run workflow，填 tag
+on:
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要发布的 tag（例如 v0.2.0，需已存在）'
+        required: true
+
+permissions:
+  contents: write     # 创建 Release 需要
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0        # 出包脚本要用 git describe 取版本号
+
+      - name: 安装依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake pkg-config patchelf \
+            libsdl2-dev libsdl2-image-dev libexpat1-dev libgl1-mesa-dev \
+            dpkg-dev python3-pil
+
+      - name: 取 vendored SDL_ttf（external/SDL_ttf 是 gitlink，仓库没有 .gitmodules）
+        run: |
+          rm -rf external/SDL_ttf
+          git clone --depth 1 --branch release-2.25.0 \
+            https://github.com/libsdl-org/SDL_ttf.git external/SDL_ttf
+
+      - name: 构建
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j"$(nproc)"
+
+      - name: 冒烟：无头自动测试（通关 + 掉命）
+        working-directory: build/bin
+        run: |
+          set -o pipefail
+          ./ZumaHD --autotest --frames 30000 --levels 1 --stage 1 --level 1 | tee /tmp/smoke.log
+          grep -q "LEVEL_COMPLETE" /tmp/smoke.log
+          ./ZumaHD --autotest --no-autoplay --frames 9000 --stage 1 --level 1 | tee /tmp/smoke2.log
+          grep -q "BALL_INTO_PIT" /tmp/smoke2.log
+
+      - name: 出包（tar.gz + deb + 校验和）
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}" scripts/package_linux.sh
+          ls -la dist/
+
+      - name: 生成 Release（标题 + 说明 + 附件）
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          if [ -z "$TAG" ] || [ "$TAG" = "master" ] || [ "$TAG" = "main" ]; then
+              TAG="${{ github.event.inputs.tag }}"
+          fi
+          NOTES=dist/RELEASE_NOTES.md
+          cp docs/RELEASE_NOTES.md "$NOTES"
+          sed -i "s/@VERSION@/${TAG#v}/g" "$NOTES"
+
+          gh release create "$TAG" \
+            --title "Zuma Deluxe HD ${TAG#v}" \
+            --notes-file "$NOTES" \
+            dist/zuma-deluxe-hd-*.tar.gz \
+            dist/zuma-deluxe-hd_*.deb \
+            dist/sha256sums.txt \
+          || gh release upload "$TAG" \
+            dist/zuma-deluxe-hd-*.tar.gz \
+            dist/zuma-deluxe-hd_*.deb \
+            dist/sha256sums.txt --clobber
