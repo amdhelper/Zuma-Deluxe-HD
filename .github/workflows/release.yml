@@ -137,4 +137,14 @@ jobs:
           cd dist
           zip -qr "$(basename "$OUT").zip" "$(basename "$OUT")"
           sha256sum "$(basename "$OUT").zip" >> sha256sums.txt
-          gh release upload "$REL_TAG" "$(basename "$OUT").zip" --clobber
+
+      # MSYS2 里没有 gh，上传单独用 Windows 上预装的 GitHub CLI（pwsh）
+      - name: 上传 zip 到 Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REL_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          $ver = $env:REL_TAG.TrimStart('v')
+          gh release upload $env:REL_TAG "dist/zuma-deluxe-hd-$ver-win64.zip" --clobber
+          gh release view $env:REL_TAG --json assets -q '.assets[].name'
