@@ -86,14 +86,10 @@ jobs:
             dist/sha256sums.txt --clobber
 
   # ── Windows x64（MSYS2 + mingw-w64 交叉打包）─────────────────────────────
-  # ⚠️ 实验性：仓库只带 Linux 版 BASS（lib/bass/libs/x86_64/libbass.so），
-  #    没有 Windows 的 lib/bass/x64/bass.dll → 这一步目前会在链接阶段失败。
-  #    补法：把 BASS 的 Windows 包（un4seen bass24.zip / bass_fx24.zip）里的
-  #    bass.dll、bass_fx.dll 放进 lib/bass/x64/ 与 lib/bass-fx/libs/x64/，
-  #    并把 CMakeLists 里 WIN32 分支的 BASS_LIB 指过去，然后去掉 continue-on-error。
+  # Windows x64：仓库自带 lib/bass/x64/bass.dll（BASS 官方 Windows 包，见
+  # lib/bass/LICENSE-windows.txt），CMake 的 WIN32 分支会链接它并定义 ZUMA_NO_BASSFX。
   windows:
     needs: build-and-release
-    continue-on-error: true
     runs-on: windows-latest
     defaults:
       run:

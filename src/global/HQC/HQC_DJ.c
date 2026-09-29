@@ -1,7 +1,12 @@
 #include "../HQC.h"
 
 #include <bass.h>
-#include <bass_fx.h>
+
+#ifdef ZUMA_NO_BASSFX
+    #include <math.h>        // powf：无 BASS_FX 时用采样率变调
+#else
+    #include <bass_fx.h>
+#endif
 
 // ── 音频开关与音量（2026-09-29 重写）───────────────────────────────────────
 // 旧实现：HQC_DJ_LoadMusic 是空函数体（缺 return），音乐永远加载不出来；
@@ -35,6 +40,15 @@ HQC_Sound HQC_DJ_LoadSound(const char* filepath) {
     if (!audioEnabled)
         return NULL;
 
+#ifdef ZUMA_NO_BASSFX
+    // 没有 BASS_FX 的平台（Windows 版只带 bass.dll）：直接建**可播放**流
+    //（原路径是 DECODE 流 + BASS_FX_TempoCreate 转成 tempo 流，那套依赖 bass_fx.dll）
+    HSTREAM sound = BASS_StreamCreateFile(FALSE, filepath, 0, 0, 0);
+    if (!sound) {
+        HQC_Log("Audio: cannot open sound %s [%d]", filepath, BASS_ErrorGetCode());
+        return NULL;
+    }
+#else
     HSTREAM sound = BASS_StreamCreateFile(FALSE, filepath, 0, 0, BASS_STREAM_DECODE);
     if (!sound) {
         HQC_Log("Audio: cannot open sound %s [%d]", filepath, BASS_ErrorGetCode());
@@ -46,6 +60,7 @@ HQC_Sound HQC_DJ_LoadSound(const char* filepath) {
         HQC_Log("Audio: tempo create failed for %s [%d]", filepath, BASS_ErrorGetCode());
         return NULL;
     }
+#endif
 
     HSTREAM* out = HQC_Memory_Allocate(sizeof(*out));
     *out = sound;
@@ -65,7 +80,21 @@ void HQC_DJ_PlaySoundPitch(HQC_Sound sound, float semitones) {
 
     HSTREAM snd = *((HSTREAM*)sound);
 
-    BASS_ChannelSetAttribute(snd, BASS_ATTRIB_TEMPO_PITCH, _soundPitch + semitones);
+    float total = _soundPitch + semitones;
+
+#ifdef ZUMA_NO_BASSFX
+    // 没有 BASS_FX：用采样率变调（BASS 核心自带）。副作用是同时改变时长，
+    // 对短音效（爆炸/宝石）听感可接受；Linux 走 BASS_FX 的 TEMPO_PITCH 不受影响。
+    BASS_CHANNELINFO info;
+
+    if (BASS_ChannelGetInfo(snd, &info) && info.freq > 0) {
+        float freq = (float)info.freq * powf(2.0f, total / 12.0f);
+        BASS_ChannelSetAttribute(snd, BASS_ATTRIB_FREQ, freq);
+    }
+#else
+    BASS_ChannelSetAttribute(snd, BASS_ATTRIB_TEMPO_PITCH, total);
+#endif
+
     BASS_ChannelSetAttribute(snd, BASS_ATTRIB_VOL, masterVolume);
     BASS_ChannelPlay(snd, TRUE);
 }

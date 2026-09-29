@@ -1,0 +1,9 @@
+bass.dll（Windows x64）
+  来源：BASS 官方 Windows 包 https://www.un4seen.com/files/bass24.zip 里的 x64/bass.dll
+  版本：随包附带（见 bass.txt）
+  许可：BASS 免费用于非商业用途；官方允许把**未经修改**的 bass.dll 随程序一起分发。
+  官方说明：https://www.un4seen.com/  （商业用途需向 un4seen developments 购买授权）
+
+  说明：本仓库只放了 Windows 版 bass.dll，没有 BASS_FX 的 Windows 版，
+  因此 Windows 构建定义 ZUMA_NO_BASSFX —— 变调改用 BASS 核心的采样率属性
+  （见 src/global/HQC/HQC_DJ.c）。Linux 版仍用 lib/bass-fx/libs/x86_64/libbass_fx.so。

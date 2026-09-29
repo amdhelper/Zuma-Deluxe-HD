@@ -96,6 +96,19 @@ FILE(GLOB_RECURSE SOURCES RELATIVE ${PROJECT_SOURCE_DIR} "src/*.c")
 set(BASS_LIB "${PROJECT_SOURCE_DIR}/lib/bass/libs/x86_64/libbass.so")
 set(BASS_FX_LIB "${PROJECT_SOURCE_DIR}/lib/bass-fx/libs/x86_64/libbass_fx.so")
 
+# ── Windows / 交叉编译 ───────────────────────────────────────────────────────
+# 仓库自带的 BASS 只有 Windows x64 的 bass.dll（没有 bass_fx.dll），因此 Windows 上：
+#   · 直接链接 lib/bass/x64/bass.dll（mingw 的 ld 支持直接对着 DLL 链接）
+#   · 不链接 BASS_FX，改定义 ZUMA_NO_BASSFX（变调走 BASS 核心的 BASS_ATTRIB_FREQ）
+# 也可用 -DBASS_LIB=... / -DBASS_FX_LIB=... 手动覆盖。
+if (WIN32 AND EXISTS "${PROJECT_SOURCE_DIR}/lib/bass/x64/bass.dll")
+    set(BASS_LIB "${PROJECT_SOURCE_DIR}/lib/bass/x64/bass.dll")
+    set(BASS_FX_LIB "")
+
+    add_compile_definitions(ZUMA_NO_BASSFX)
+    message(STATUS "Windows: 使用 lib/bass/x64/bass.dll，禁用 BASS_FX")
+endif()
+
 add_executable(
     ZumaHD
     ${SOURCES}
