@@ -4,6 +4,9 @@
 #include <stdlib.h>
 #include "global/HQC.h"
 
+#include "zuma/GameOptions.h"
+#include "zuma/AutoTest.h"
+
 #include <unistd.h>
 #include <string.h>
 
@@ -30,6 +33,13 @@ void register_signal_handlers() {
 
 int main(int argc, char ** args) {
     register_signal_handlers();
+
+    // 命令行选项（自动测试/难度/起始关卡/音频…）见 GameOptions.c
+    GameOptions_Parse(argc, args);
+    AutoTest_Init();
+
     HQC_Log("Starting ZumaHD...");
+    GameOptions_LogSummary();
+
     return ApplicationZuma_Start();
 }

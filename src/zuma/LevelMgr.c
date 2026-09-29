@@ -39,6 +39,12 @@ static LevelSettings* _FindSettings(const char* id) {
     return NULL;
 }
 
+static LevelGraphics* _LastGraphics() {
+    size_t n = HQC_Container_VectorCount(mgr.graphicsList);
+    if (n == 0) return NULL;
+    return (LevelGraphics*)HQC_Container_VectorGet(mgr.graphicsList, (int)n - 1);
+}
+
 static void _ParseAttributes_Graphics(const char** attr) {
     LevelGraphics gx;
     memset(&gx, 0, sizeof(gx));
@@ -48,31 +54,73 @@ static void _ParseAttributes_Graphics(const char** attr) {
     gx.frogPos.y = 360;
     gx.coinsPosList = HQC_Container_CreateVector(sizeof(v2f_t));
 
+    const char* imageName = NULL;
+    const char* curveName = NULL;
+    const char* topName   = NULL;
+
     for (int i = 0; attr[i]; i += 2) {
-        // HQC_Log("Attr: %s = %s", attr[i], attr[i+1]);
         if (strcmp(attr[i], "id") == 0) {
             gx.id = HQC_StringClone(attr[i+1]);
         } else if (strcmp(attr[i], "curve") == 0) {
-            // ...
+            curveName = attr[i+1];
+        } else if (strcmp(attr[i], "image") == 0) {
+            imageName = attr[i+1];
+        } else if (strcmp(attr[i], "image-top") == 0) {
+            // 顶层贴图（隧道/桥）：levels/<id>/<image-top>.png（移植自 v0.1.0 Level_Load）
+            topName = attr[i+1];
         } else if (strcmp(attr[i], "dispname") == 0) {
             gx.dispName = HQC_StringClone(attr[i+1]);
+        } else if (strcmp(attr[i], "gx") == 0) {
+            // 青蛙坐标（原版：x 需 +106 再乘屏幕缩放；这里直接用 1.5 比例）
+            gx.frogPos.x = (atof(attr[i+1]) + 106) * 1.5f;
+        } else if (strcmp(attr[i], "gy") == 0) {
+            gx.frogPos.y = atof(attr[i+1]) * 1.5f;
         }
     }
     
     if (gx.id == NULL) {
         HQC_Log("LevelMgr: Warning - Graphics element missing ID!");
+        HQC_Container_FreeVector(gx.coinsPosList);
         return;
     }
+
+    if (!gx.dispName) gx.dispName = HQC_StringClone(gx.id);
+
+    if (!imageName) imageName = gx.id;
+    if (!curveName) curveName = gx.id;
     
     char buffer[256];
     
-    snprintf(buffer, sizeof(buffer), "levels/%s/%s.dat", gx.id, gx.id);
+    snprintf(buffer, sizeof(buffer), "levels/%s/%s.dat", curveName, curveName);
     gx.curveAFile = HQC_StringClone(buffer);
     
-    snprintf(buffer, sizeof(buffer), "levels/%s/%s.jpg", gx.id, gx.id);
+    snprintf(buffer, sizeof(buffer), "levels/%s/%s.jpg", gx.id, imageName);
     gx.textureFile = HQC_StringClone(buffer);
+
+    if (topName) {
+        snprintf(buffer, sizeof(buffer), "levels/%s/%s.png", gx.id, topName);
+        gx.textureTopLayerFile = HQC_StringClone(buffer);
+    } else {
+        gx.textureTopLayerFile = NULL;
+    }
     
     HQC_Container_VectorAdd(mgr.graphicsList, &gx);
+}
+
+
+// <TreasurePoint x=".." y=".." dist1=".."/> —— 石头/宝石出现点（挂在上一个 Graphics 上）
+static void _ParseAttributes_TreasurePoint(const char** attr) {
+    LevelGraphics* gx = _LastGraphics();
+    if (!gx) return;
+
+    v2f_t p = { 0, 0 };
+
+    for (int i = 0; attr[i]; i += 2) {
+        if (strcmp(attr[i], "x") == 0) p.x = atof(attr[i+1]);
+        else if (strcmp(attr[i], "y") == 0) p.y = atof(attr[i+1]);
+    }
+
+    HQC_Container_VectorAdd(gx->coinsPosList, &p);
 }
 
 static void _ParseAttributes_Settings(const char** attr) {
@@ -81,6 +129,10 @@ static void _ParseAttributes_Settings(const char** attr) {
     
     // Default values
     set.slowFactor = 1.0f;
+    set.ballColors = 4;
+    set.ballStartCount = 35;
+    set.gaugeScore = 1000;
+    set.partTime = 60;
 
     for (int i = 0; attr[i]; i += 2) {
         if (strcmp(attr[i], "id") == 0) set.id = HQC_StringClone(attr[i+1]);
@@ -89,7 +141,12 @@ static void _ParseAttributes_Settings(const char** attr) {
         else if (strcmp(attr[i], "start") == 0) set.ballStartCount = atoi(attr[i+1]);
         else if (strcmp(attr[i], "colors") == 0) set.ballColors = atoi(attr[i+1]);
         else if (strcmp(attr[i], "slowfactor") == 0) set.slowFactor = atof(attr[i+1]);
+        else if (strcmp(attr[i], "repeat") == 0) set.repeatChance = atoi(attr[i+1]);
+        else if (strcmp(attr[i], "single") == 0) set.singleChance = atoi(attr[i+1]);
+        else if (strcmp(attr[i], "partime") == 0 || strcmp(attr[i], "partTime") == 0) set.partTime = atoi(attr[i+1]);
     }
+
+    if (set.slowFactor <= 0.0f) set.slowFactor = 1.0f;
     
     HQC_Container_VectorAdd(mgr.settingsList, &set);
 }
@@ -242,6 +299,8 @@ static void _StartElement(void *userData, const char *name, const char **atts) {
         _ParseAttributes_Graphics(atts);
     } else if (strcmp(name, "Settings") == 0) {
         _ParseAttributes_Settings(atts);
+    } else if (strcmp(name, "TreasurePoint") == 0) {
+        _ParseAttributes_TreasurePoint(atts);
     } else if (strcmp(name, "StageProgression") == 0) {
         _ParseAttributes_StageProgression(atts);
     }
@@ -368,6 +427,40 @@ bool LevelMgr_AdvanceLevel() {
 void LevelMgr_Reset() {
     mgr.currentStage = 0;
     mgr.currentLevel = 0;
+}
+
+// 0-based 起始进度（命令行 --stage/--level 用；越界自动收敛到有效范围）
+void LevelMgr_SetProgress(int stage, int level) {
+    int stageCount = (int)HQC_Container_VectorCount(mgr.stages);
+    if (stageCount <= 0) { mgr.currentStage = 0; mgr.currentLevel = 0; return; }
+
+    if (stage < 0) stage = 0;
+    if (stage >= stageCount) stage = stageCount - 1;
+
+    Stage* stg = (Stage*)HQC_Container_VectorGet(mgr.stages, stage);
+    int levelCount = (int)HQC_Container_VectorCount(stg->levels);
+
+    if (level < 0) level = 0;
+    if (levelCount > 0 && level >= levelCount) level = levelCount - 1;
+
+    mgr.currentStage = stage;
+    mgr.currentLevel = level;
+}
+
+// 当前大关共有几个小关（HUD 显示 "lvl x-y" / 进度用）
+int LevelMgr_GetCurrentStageLevelCount() {
+    if (mgr.currentStage >= (int)HQC_Container_VectorCount(mgr.stages)) return 0;
+
+    Stage* stg = (Stage*)HQC_Container_VectorGet(mgr.stages, mgr.currentStage);
+    return (int)HQC_Container_VectorCount(stg->levels);
+}
+
+int LevelMgr_GetStageCount() {
+    return (int)HQC_Container_VectorCount(mgr.stages);
+}
+
+int LevelMgr_GetSettingsCount() {
+    return (int)HQC_Container_VectorCount(mgr.settingsList);
 }
 
 int LevelMgr_GetCurrentStage() { return mgr.currentStage + 1; }

@@ -71,7 +71,7 @@ static const char* _SOUND_FILES[] = {
     "warning1.ogg",
 };
 
-static const char* _MUSIC_FILE = "zuma.mo3";
+static const char* _MUSIC_FILE = "music/zuma.mo3";
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -539,6 +539,9 @@ private void _LoadFonts() {
     HQC_Log("[ResourceStore] Common fonts count: %d", HQC_Container_VectorCount(_fontList));
 }
 
+private void _LoadFonts();
+private void _LoadMusic();
+
 //////////////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -548,6 +551,37 @@ public void Store_LoadAll() {
     _MakeAnimations();
     _LoadSounds();
     _LoadFonts();
+    _LoadMusic();
+}
+
+
+// ── 音乐（2026-09-29：此前 HQC_DJ_LoadMusic 是空实现 → 全程无声）─────────────
+private void _LoadMusic() {
+    _music = HQC_DJ_LoadMusic(_MUSIC_FILE);
+
+    if (_music)
+        HQC_Log("[ResourceStore] music loaded: %s", _MUSIC_FILE);
+    else
+        HQC_Log("[ResourceStore] music NOT loaded: %s", _MUSIC_FILE);
+}
+
+
+public HQC_Music Store_GetMusic() {
+    return _music;
+}
+
+
+public void Store_PlayMusic(int order) {
+    if (!_music) return;
+
+    HQC_DJ_PlayMusicOrder(_music, order);
+}
+
+
+public void Store_StopMusic() {
+    if (!_music) return;
+
+    HQC_DJ_StopMusic(_music);
 }
 
  

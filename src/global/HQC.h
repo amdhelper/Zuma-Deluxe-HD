@@ -37,11 +37,26 @@ void HQC_CreateWindow(const char* caption, int width, int height);
 ////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////
 
-// System
+// System / Input
+// 🔴 输入统一在每帧开头锁存一次（主循环调用 HQC_Input_Update）：
+//    同帧内任意多次查询结果一致。旧实现把边沿检测放在查询函数里（静态变量），
+//    同一帧的第二个调用者永远拿不到 pressed=true —— 青蛙、按钮、子弹三方互抢事件，
+//    点击经常"没反应"（2026-09-29 修复）。
+void    HQC_Input_Update();
+
 v2i_t   HQC_Input_MouseGetPosition();
-bool    HQC_Input_MouseLeftPressed();
 bool    HQC_Input_MouseLeft();
+bool    HQC_Input_MouseRight();
+bool    HQC_Input_MouseLeftPressed();
+bool    HQC_Input_MouseRightPressed();
+
 bool    HQC_Input_IsKeyDown(HQC_Key key);
+bool    HQC_Input_KeyPressed(HQC_Key key);
+
+// 无头/自动测试：脚本输入覆盖真实输入（enabled=false 时恢复真实设备）
+void    HQC_Input_SetScripted(bool enabled, int mouseX, int mouseY, bool leftDown, bool rightDown);
+void    HQC_Input_SetScriptedKey(HQC_Key key, bool down);
+void    HQC_Input_ClearScriptedKeys();
 
 void        HQC_Delay(uint32_t ms);
 uint32_t    HQC_GetTicks();
@@ -94,6 +109,7 @@ void HQC_Artist_DrawTextureRectLeft(HQC_Texture texture, float x, float y, irect
 void HQC_Artist_DrawTextureRect(HQC_Texture texture, float x, float y, irect_t rect);
 void HQC_Artist_DrawLine(float x1, float y1, float x2, float y2);
 void HQC_Artist_DrawPoint(float x, float y);
+void HQC_Artist_FillRect(float x, float y, float width, float height);   // 用当前颜色填充矩形（半透明遮罩等）
 
 void HQC_Artist_SetDrawColorMod(uint32_t color);
 
@@ -147,15 +163,24 @@ bool HQC_Window_PollEvent(HQC_Event* event);
 typedef void* HQC_Sound;
 typedef void* HQC_Music;
 
-HQC_Music HQC_DJ_LoadMusic();
+// 音频可用性：无音频设备/无头 CI 时 HQC_Init 不会致命退出，而是关闭音频（全部播放调用变 no-op）
+bool HQC_Audio_IsEnabled();
+void HQC_Audio_SetEnabled(bool enabled);
+
+float HQC_DJ_GetMasterVolume();
+void  HQC_DJ_SetMasterVolume(float volume);
+
+// music: Zuma 的音乐是单文件多曲（.mo3 MOD），用 order 切曲（MUS_*）。
+HQC_Music HQC_DJ_LoadMusic(const char* filepath);
 HQC_Sound HQC_DJ_LoadSound(const char* filepath);
 
 void HQC_DJ_SetSoundPith(float pitch);
 
-void HQC_DJ_PlayMusic(HQC_Music music);
+void HQC_DJ_PlayMusicOrder(HQC_Music music, int order);
 void HQC_DJ_StopMusic(HQC_Music music);
 
 void HQC_DJ_PlaySound(HQC_Sound sound);
+void HQC_DJ_PlaySoundPitch(HQC_Sound sound, float semitones);
 void HQC_DJ_StopSound(HQC_Sound sound);
 
 ////////////////////////////////////////////////////////////////////////

@@ -13,12 +13,24 @@ static struct {
 //////////////////////////////////////////////////////////////////////////////
 
 void HQC_CreateWindow(const char* caption, int width, int height) {
+    // ⚠️ 不再请求 SDL_WINDOW_OPENGL：无头（SDL_VIDEODRIVER=dummy）下 dummy 驱动
+    // 不支持该 flag，窗口创建直接失败 → 自动测试跑不起来（2026-09-29）。
+    // 渲染走 SDL_Renderer（GPU 加速由渲染器自己选），不需要 GL 窗口标志。
+    Uint32 windowFlags = SDL_WINDOW_RESIZABLE;
+
+    const char* videoDriver = SDL_GetCurrentVideoDriver();
+    (void)videoDriver;
+
     graphics.window = SDL_CreateWindow(
         caption, 
         SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 
         width, height, 
-        SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_MAXIMIZED
+        windowFlags
     );
+
+    if (!graphics.window)
+        HQC_RaiseErrorHeaderFormat(
+            "SDL Error", "Window creation fail [%s]", SDL_GetError());
 
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "2");
 
@@ -29,44 +41,145 @@ void HQC_CreateWindow(const char* caption, int width, int height) {
         SDL_RENDERER_PRESENTVSYNC 
     );
 
+    // 无 GPU/无头（SDL_VIDEODRIVER=dummy）时加速渲染器会创建失败 →
+    // 回退软件渲染器，而不是致命退出（2026-09-29：自动测试/CI 必需）
+    if (!graphics.render) {
+        HQC_Log("Renderer: accelerated/vsync unavailable (%s), falling back to software",
+                SDL_GetError());
+        graphics.render = SDL_CreateRenderer(graphics.window, -1, SDL_RENDERER_SOFTWARE);
+    }
+
     if (!graphics.render)
         HQC_RaiseErrorHeaderFormat(
-            "SDL Error", "Rendere creation fail [%d]", SDL_GetError());
+            "SDL Error", "Rendere creation fail [%s]", SDL_GetError());
 
     SDL_RenderSetLogicalSize(graphics.render, width, height);
 }
 
 
-v2i_t   HQC_Input_MouseGetPosition() {
-    // int wWidth, wHeight;
-    // int _mx, _my;
+///////////////////////////////////////////////////////////////////////
+// 输入层：每帧锁存一次（HQC_Input_Update），查询函数无副作用
+///////////////////////////////////////////////////////////////////////
 
-    v2i_t pos;
+typedef struct InputState {
+    v2i_t   mousePos;
+    bool    left;
+    bool    right;
 
-    SDL_GetMouseState(&pos.x, &pos.y);
-    // SDL_GetWindowSize(graphics.window, &wWidth, &wHeight);
-    // _mx /= wWidth / WINDOW_WIDTH;
-    // _my /= wHeight / WINDOW_HEIGHT;
+    bool    prevLeft;
+    bool    prevRight;
 
-    return pos;
+    bool    keys[HQC_NUM_SCANCODES];
+    bool    prevKeys[HQC_NUM_SCANCODES];
+} InputState;
+
+static InputState in;
+
+// 脚本输入（自动测试/无头）：SetScripted 打开后覆盖鼠标，SetScriptedKey 叠加按键
+static bool  scriptedEnabled  = false;
+static v2i_t scriptedMousePos = { 0, 0 };
+static bool  scriptedLeft     = false;
+static bool  scriptedRight    = false;
+static bool  scriptedKeys[HQC_NUM_SCANCODES] = { false };
+
+
+static bool RawSDLKeyDown__(HQC_Key key) {
+    const Uint8* st = SDL_GetKeyboardState(NULL);
+    return st[key] != 0;
+}
+
+static void RawSDLMouse__(v2i_t* pos, bool* left, bool* right) {
+    int x = 0, y = 0;
+    Uint32 mask = SDL_GetMouseState(&x, &y);
+    pos->x = x;
+    pos->y = y;
+    *left  = (mask & SDL_BUTTON_LMASK) != 0;
+    *right = (mask & SDL_BUTTON_RMASK) != 0;
 }
 
 
-static bool mouseLeftPressed = false;
-static bool mouseLeftPrevious = false;
+void HQC_Input_Update() {
+    in.prevLeft  = in.left;
+    in.prevRight = in.right;
+
+    for (int i = 0; i < HQC_NUM_SCANCODES; i++)
+        in.prevKeys[i] = in.keys[i];
+
+    if (scriptedEnabled) {
+        in.mousePos = scriptedMousePos;
+        in.left     = scriptedLeft;
+        in.right    = scriptedRight;
+
+        for (int i = 0; i < HQC_NUM_SCANCODES; i++)
+            in.keys[i] = scriptedKeys[i];
+    } else {
+        RawSDLMouse__(&in.mousePos, &in.left, &in.right);
+
+        for (int i = 0; i < HQC_NUM_SCANCODES; i++)
+            in.keys[i] = RawSDLKeyDown__((HQC_Key)i);
+    }
+}
+
+
+void HQC_Input_SetScripted(bool enabled, int mouseX, int mouseY, bool leftDown, bool rightDown) {
+    scriptedEnabled  = enabled;
+    scriptedMousePos.x = mouseX;
+    scriptedMousePos.y = mouseY;
+    scriptedLeft     = leftDown;
+    scriptedRight    = rightDown;
+}
+
+
+void HQC_Input_SetScriptedKey(HQC_Key key, bool down) {
+    if (key > HQC_KEY_UNKNOWN && key < HQC_NUM_SCANCODES)
+        scriptedKeys[key] = down;
+}
+
+
+void HQC_Input_ClearScriptedKeys() {
+    for (int i = 0; i < HQC_NUM_SCANCODES; i++)
+        scriptedKeys[i] = false;
+}
+
+
+v2i_t HQC_Input_MouseGetPosition() {
+    return in.mousePos;
+}
+
 
 bool HQC_Input_MouseLeft() {
-    return SDL_GetMouseState(NULL, NULL) & SDL_BUTTON_LMASK;
+    return in.left;
 }
 
-bool HQC_Input_MouseLeftPressed() {    
-    bool current = HQC_Input_MouseLeft();
-    bool pressed = current && !mouseLeftPrevious;
-    mouseLeftPrevious = current;
-    return pressed;
+
+bool HQC_Input_MouseRight() {
+    return in.right;
 }
 
-static bool KEYS[HQC_NUM_SCANCODES] = { 0 };
+
+bool HQC_Input_MouseLeftPressed() {
+    return in.left && !in.prevLeft;
+}
+
+
+bool HQC_Input_MouseRightPressed() {
+    return in.right && !in.prevRight;
+}
+
+
+bool HQC_Input_IsKeyDown(HQC_Key key) {
+    if (key <= HQC_KEY_UNKNOWN || key >= HQC_NUM_SCANCODES)
+        return false;
+    return in.keys[key];
+}
+
+
+bool HQC_Input_KeyPressed(HQC_Key key) {
+    if (key <= HQC_KEY_UNKNOWN || key >= HQC_NUM_SCANCODES)
+        return false;
+    return in.keys[key] && !in.prevKeys[key];
+}
+
 
 bool HQC_Window_PollEvent(HQC_Event* event) {
     SDL_Event sdlEvent;
@@ -74,21 +187,8 @@ bool HQC_Window_PollEvent(HQC_Event* event) {
 
     *event = (int)sdlEvent.type;
 
-    switch (sdlEvent.type) {
-        case SDL_KEYDOWN:
-            KEYS[sdlEvent.key.keysym.scancode] = true;
-            break;
-        case SDL_KEYUP:
-            KEYS[sdlEvent.key.keysym.scancode] = false;
-            break;
-    }
-
     return res;
 };
-
-bool HQC_Input_IsKeyDown(HQC_Key key) {
-    return KEYS[key] == true;
-}
 
 //////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////
@@ -213,6 +313,11 @@ void HQC_Artist_DrawLine(float x1, float y1, float x2, float y2) {
 
 void HQC_Artist_DrawPoint(float x, float y) {
     SDL_RenderDrawPointF(graphics.render, x, y);
+}
+
+void HQC_Artist_FillRect(float x, float y, float width, float height) {
+    SDL_FRect rect = { x, y, width, height };
+    SDL_RenderFillRectF(graphics.render, &rect);
 }
 
 void HQC_Artist_SetDrawColorMod(uint32_t color) {

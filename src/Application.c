@@ -6,6 +6,10 @@
 #include "zuma/Scene.h" 
 #include "zuma/scenes/Index.h"
 #include "zuma/LevelMgr.h"
+#include "zuma/GameOptions.h"
+#include "zuma/AutoTest.h"
+#include "zuma/Statistics.h"
+#include "zuma/FloatingText.h"
 
 // Forward declaration for minimal scene
 HScene Scene_Register_Minimal();
@@ -17,11 +21,6 @@ HScene SC_MINIMAL;
 
 #include <stdlib.h>
 
-// #include "global/Engine.h"
-
-// #include "gameplay/Game.h"
-// #include "menu/MenuMgr.h"
-
 #define WINDOW_WIDTH    1280
 #define WINDOW_HEIGHT   720
 
@@ -29,9 +28,6 @@ HScene SC_MINIMAL;
 #define FRAME_DELAY (1000 / MAX_FPS)
 
 static struct {
-    // Game game;
-    // MenuMgr menuMgr;
-
     int curLvl;
     int curDifficulty;
 
@@ -46,40 +42,18 @@ static struct {
 
 
 static void _Init() {
-    app.curLvl          = 0;
-    app.curDifficulty   = 0;
+    app.curLvl          = gGameOptions.startLevel;
+    app.curDifficulty   = gGameOptions.difficulty;
     app.inMenu          = 1;
     app.isRunning       = true;
 }
 
 
 static int _LoadResources(void) {
-    // if (!Engine_LoadSettings())
-    //     return 9;
-
-    // if (!Engine_TexturesLoad(filesTextures, TEXTURES_COUNT))
-    //     return 3;
-    // if (!Engine_FontsLoad(filesFonts, FONTS_COUNT))
-    //     return 4;
-    // if (!Engine_SoundsLoad(filesSounds, SOUNDS_COUNT))
-    //     return 5;
-    // if (!Engine_SoundsSfxLoad(filesSoundsSfx, SOUNDS_SFX_COUNT))
-    //     return 6;
-    // if (!Engine_MusicLoad(fileMusic))
-    //     return 7;
-
     if (!LevelMgr_LoadLevels("levels/levels.xml"))
         return 8;
-}
 
-
-static int _ShowStartupImage(void) {
-    HQC_Texture texDisclaimer = HQC_Artist_LoadTexture("images\\disclaimer.jpg");
-    
-    HQC_Artist_DrawTexture(texDisclaimer, WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2);
-    HQC_Artist_Display();
-
-    HQC_Delay(2000);
+    return 0;
 }
 
 
@@ -92,16 +66,17 @@ static void _HandleEvents(void) {
                 break;
         }
     }
-    
-    // Add keyboard shortcuts for scene switching
+
+    // 开发用场景快捷键（1=游戏 2=测试场景 M=菜单）。
+    // ⚠️ ESC 不在这里处理：菜单场景 ESC=退出，游戏场景 ESC=暂停（由场景自己管）。
     static bool key1Pressed = false;
     static bool key2Pressed = false;
     static bool keyMPressed = false;
-    
+
     bool key1Current = HQC_Input_IsKeyDown(HQC_KEY_1);
     bool key2Current = HQC_Input_IsKeyDown(HQC_KEY_2);
     bool keyMCurrent = HQC_Input_IsKeyDown(HQC_KEY_M);
-    
+
     if (key1Current && !key1Pressed) {
         HQC_Log("Switching to game scene");
         Scene_Change(SC_GAME);
@@ -114,23 +89,32 @@ static void _HandleEvents(void) {
         HQC_Log("Switching to menu scene");
         Scene_Change(SC_MENU);
     }
-    if (HQC_Input_IsKeyDown(HQC_KEY_ESCAPE)) {
-        exit(0);
-    }
-    
+
     key1Pressed = key1Current;
     key2Pressed = key2Current;
     keyMPressed = keyMCurrent;
 }
 
 
-
-
 static void _Start(void) {
     Store_LoadAll();
 
     Scene_RegisterAll();
-    
+
+    FloatingTextFactory_Init();
+    Statistics_Init();
+    Statistics_SetLives(gGameOptions.lives);
+
+    // 起始大关/小关（1-based → 内部 0-based）
+    LevelMgr_Reset();
+    LevelMgr_SetProgress(gGameOptions.startStage - 1, gGameOptions.startLevel - 1);
+
+    if (AutoTest_IsActive()) {
+        HQC_Log("Application: autotest — starting game scene directly");
+        Scene_Change(SC_GAME);
+        return;
+    }
+
     HQC_Log("Application: Starting menu scene");
     Scene_Change(SC_MENU);
 }
@@ -138,21 +122,17 @@ static void _Start(void) {
 
 static void _Update(void) {
     Scene_Update();
-    // Game_Update();
 }
 
 
 static void _Draw(void) {
     HQC_Artist_Clear();
     Scene_Draw();
-    // Game_Draw();
     HQC_Artist_Display();
 }
 
 
 int ApplicationZuma_Start(void) {
-    
-    
     HQC_Init();
     HQC_CreateWindow(
         "Zuma HD. By GalaxyShad and s4lat", 
@@ -161,37 +141,48 @@ int ApplicationZuma_Start(void) {
 
     LevelMgr_Init();
     _LoadResources();
-    // _ShowStartupImage();
 
     _Init();
 
-    //MenuMgr_Init(&app.menuMgr, &app.curLvl, &app.curDifficulty);
-    //MenuMgr_Set(&app.menuMgr, MR_MAIN);
     _Start();
     HQC_Log("Application: Entering main loop");
+    HQC_Artist_SetColorHex(C_BLACK);
+
     int frameCount = 0;
     while (app.isRunning) {
         frameCount++;
-        if (frameCount % 60 == 0) {
-            HQC_Log("Application: Frame %d", frameCount);
-        }
-        
+
+        // 输入锁存：同帧内所有查询结果一致（脚本输入也在这一步生效）
+        HQC_Input_Update();
+
         _HandleEvents();
+
+        if (frameCount % 60 == 0)
+            HQC_Log("Application: Frame %d", frameCount);
 
         app.frameStart = HQC_GetTicks();
         _Update();
         _Draw();
         app.frameTime  = HQC_GetTicks() - app.frameStart;
 
-        
-        if (app.frameTime < FRAME_DELAY)
+        if (!gGameOptions.noFrameLimit && app.frameTime < FRAME_DELAY)
             HQC_Delay(FRAME_DELAY - app.frameTime);
+
+        if (AutoTest_IsActive() && frameCount >= AutoTest_MaxFrames()) {
+            HQC_Log("Application: autotest frame limit reached (%d)", frameCount);
+            AutoTest_Event("FRAME_LIMIT", "frames=%d", frameCount);
+            break;
+        }
+
+        if (AutoTest_StopRequested()) {
+            HQC_Log("Application: autotest stop requested (%d)", frameCount);
+            break;
+        }
     }
 
-    HQC_Cleanup();
+    AutoTest_Report(frameCount, 0);
 
-    // LevelMgr_Free();
-    // Engine_Destroy();
+    HQC_Cleanup();
 
     return 0;
 }

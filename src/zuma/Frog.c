@@ -5,6 +5,10 @@
 #include "ResourceStore.h"
 #include "BallColors.h"
 
+#define _USE_MATH_DEFINES
+#include <math.h>
+#include <stdlib.h>
+
 typedef struct Frog {
     HBulletList bulletList;
 
@@ -17,6 +21,7 @@ typedef struct Frog {
 
     BallColor  ballColor;
     BallColor  nextBallColor;
+    int        colorCount;
 
     float tongueExpand;
     float ballExpand;
@@ -41,10 +46,22 @@ static Frog* _Frog(HFrog hfrog) {
     return (Frog*)hfrog;
 }
 
+static float _Frog_RandFloat() {
+    return (float)rand() / (float)RAND_MAX;
+}
+
+static BallColor _Frog_RandomColor(Frog* frog) {
+    int n = frog->colorCount;
+    if (n < 1) n = 1;
+    if (n > 6) n = 6;
+
+    return (BallColor)(rand() % n);
+}
+
 static void _Frog_NextBall(Frog* frog) {
     frog->ballColor = frog->nextBallColor;
 
-    frog->nextBallColor = HQC_RandomRange(0, 3);
+    frog->nextBallColor = _Frog_RandomColor(frog);
 
     HQC_Animation_SetFrame(frog->animNextBall, frog->nextBallColor);
 }
@@ -75,8 +92,10 @@ HFrog Frog_Create(float x, float y, HBulletList bulletList) {
 
     frog->bulletList    = bulletList;
 
-    frog->ballColor = HQC_RandomRange(0, 3);
-    frog->nextBallColor = HQC_RandomRange(0, 3);
+    frog->colorCount = 4;
+
+    frog->ballColor = BALL_BLUE;
+    frog->nextBallColor = BALL_GREEN;
 
     frog->fireRecoilTick = 0;
 
@@ -89,8 +108,77 @@ HFrog Frog_Create(float x, float y, HBulletList bulletList) {
     return frog;
 }
 
-#define _USE_MATH_DEFINES
-#include <math.h>
+
+void Frog_Configure(HFrog hfrog, int colorCount) {
+    Frog* frog = _Frog(hfrog);
+    if (!frog) return;
+
+    if (colorCount < 1) colorCount = 1;
+    if (colorCount > 6) colorCount = 6;
+
+    frog->colorCount = colorCount;
+
+    frog->ballColor     = (BallColor)(rand() % colorCount);
+    frog->nextBallColor = (BallColor)(rand() % colorCount);
+
+    HQC_Animation_SetFrame(frog->animNextBall, frog->nextBallColor);
+}
+
+
+BallColor Frog_GetBallColor(HFrog hfrog) {
+    Frog* frog = _Frog(hfrog);
+    return frog ? frog->ballColor : BALL_NONE;
+}
+
+
+BallColor Frog_GetNextBallColor(HFrog hfrog) {
+    Frog* frog = _Frog(hfrog);
+    return frog ? frog->nextBallColor : BALL_NONE;
+}
+
+
+void Frog_SetColors(HFrog hfrog, BallColor current, BallColor next) {
+    Frog* frog = _Frog(hfrog);
+    if (!frog) return;
+
+    if (current != BALL_NONE) frog->ballColor = current;
+    if (next != BALL_NONE)    frog->nextBallColor = next;
+
+    HQC_Animation_SetFrame(frog->animNextBall, frog->nextBallColor);
+}
+
+
+void Frog_SwapBalls(HFrog hfrog) {
+    Frog* frog = _Frog(hfrog);
+    if (!frog) return;
+
+    BallColor tmp = frog->ballColor;
+    frog->ballColor = frog->nextBallColor;
+    frog->nextBallColor = tmp;
+
+    HQC_Animation_SetFrame(frog->animNextBall, frog->nextBallColor);
+
+    HQC_DJ_PlaySound(Store_GetSoundByID(SND_BUTTON2));
+}
+
+
+v2f_t Frog_GetPos(HFrog hfrog) {
+    Frog* frog = _Frog(hfrog);
+    return frog ? frog->pos : v2f_t_default;
+}
+
+
+float Frog_GetAngle(HFrog hfrog) {
+    Frog* frog = _Frog(hfrog);
+    return frog ? frog->angle : 0.0f;
+}
+
+
+bool Frog_IsFiring(HFrog hfrog) {
+    Frog* frog = _Frog(hfrog);
+    return frog ? frog->isFire : false;
+}
+
 
 static v2f_t _Frog_GetBallPos(Frog* frog) {
     float fcos = HQC_FCos(frog->angle);
@@ -105,25 +193,35 @@ static v2f_t _Frog_GetBallPos(Frog* frog) {
 }
 
 
+v2f_t Frog_GetBallPos(HFrog hfrog) {
+    Frog* frog = _Frog(hfrog);
+    if (!frog) return v2f_t_default;
+
+    return _Frog_GetBallPos(frog);
+}
+
+
 void Frog_Update(HFrog hfrog) {
     Frog* frog = _Frog(hfrog);
+    if (!frog) return;
 
     v2i_t mousePos = HQC_Input_MouseGetPosition();
 
-    frog->angle = atan2(mousePos.y - frog->pos.y, mousePos.x - frog->pos.x);
+    frog->angle = HQC_FAtan2(mousePos.y - frog->pos.y, mousePos.x - frog->pos.x);
 
-    static bool s_isMouseLeftPressed = false;
+    // 右键：交换当前/下一颗球（原版行为，鼠标右键）
+    if (HQC_Input_MouseRightPressed() && !frog->isFire)
+        Frog_SwapBalls(hfrog);
 
-    if (HQC_Input_MouseLeftPressed() && !s_isMouseLeftPressed && !frog->isFire) {
+    // 左键：发射
+    if (HQC_Input_MouseLeftPressed() && !frog->isFire) {
         HQC_DJ_PlaySound(Store_GetSoundByID(SND_FIREBALL1));
 
         HQC_Animation_SetSpeed(frog->animBlink, 0.5);
 
         v2f_t ballPos = _Frog_GetBallPos(frog);
-        BulletList_Add(frog->bulletList, frog->ballColor, ballPos, 16.f, frog->angle);
+        BulletList_Add(frog->bulletList, frog->ballColor, ballPos, BULLET_SPEED, frog->angle);
         _Frog_NextBall(frog);
-
-        s_isMouseLeftPressed = true;
 
         frog->ballExpand = 0;
 
@@ -131,6 +229,7 @@ void Frog_Update(HFrog hfrog) {
         frog->isFire = true;
     }
 
+    // 发射后坐力/舌头回缩动画
     if (frog->isFire) {
         frog->fireRecoilTick += 0.25;
 
@@ -152,10 +251,11 @@ void Frog_Update(HFrog hfrog) {
 
         frog->pos.x = frog->posStart.x - fcos * recoil * 8;
         frog->pos.y = frog->posStart.y - fsin * recoil * 8;
+    } else {
+        frog->tongueExpand = 24;
+        frog->pos.x = frog->posStart.x;
+        frog->pos.y = frog->posStart.y;
     }
-
-    if (!HQC_Input_MouseLeftPressed())
-        s_isMouseLeftPressed = false;
 
     HQC_Animation_Tick(frog->animBlink);
 
@@ -163,13 +263,12 @@ void Frog_Update(HFrog hfrog) {
         HQC_Animation_SetSpeed(frog->animBlink, 0);
         HQC_Animation_SetFrame(frog->animBlink, 0);
     }
-
-    
 }
 
 
 void Frog_Draw(HFrog hfrog) {
     Frog* frog = _Frog(hfrog);
+    if (!frog) return;
 
     float fcos = HQC_FCos(frog->angle);
     float fsin = HQC_FSin(frog->angle);
@@ -187,6 +286,7 @@ void Frog_Draw(HFrog hfrog) {
 
 void Frog_DrawTop(HFrog hfrog) {
     Frog* frog = _Frog(hfrog);
+    if (!frog) return;
 
     float fcos = HQC_FCos(frog->angle);
     float fsin = HQC_FSin(frog->angle);
@@ -195,11 +295,12 @@ void Frog_DrawTop(HFrog hfrog) {
 
     v2f_t ballPos = _Frog_GetBallPos(frog);
 
-    HQC_Artist_DrawAnimation(Store_GetAnimationByID(ANIM_BALL_BLUE + frog->ballColor), ballPos.x, ballPos.y);
+    HQC_Artist_DrawAnimation(Store_GetAnimationByID(ANIM_BALL_BLUE + (int)frog->ballColor), ballPos.x, ballPos.y);
 
     HQC_Artist_DrawSetScale(1.5f);
     HQC_Artist_DrawAnimation(frog->animNextBall, frog->pos.x - 40 * fcos, frog->pos.y - 40 * fsin);
     HQC_Artist_DrawSetScale(1);
+    HQC_Artist_DrawSetAlpha(1);
 
     HQC_Artist_DrawAnimation(frog->animBlink, frog->pos.x, frog->pos.y);
 

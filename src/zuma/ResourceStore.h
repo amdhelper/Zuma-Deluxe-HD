@@ -8,8 +8,12 @@ HQC_Texture     Store_GetTextureByID(int id);
 HQC_Sprite      Store_GetSpriteByID(int id);
 HQC_Animation   Store_GetAnimationByID(int id);
 HQC_Sound       Store_GetSoundByID(int id);
-HQC_Music       Store_GetMusicByID(int id);
 HQC_Font        Store_GetFontByID(int id);
+
+// 音乐（content/music/zuma.mo3 单文件多曲 → 用 order 切曲，见 MUS_* 枚举）
+HQC_Music Store_GetMusic(void);
+void      Store_PlayMusic(int order);
+void      Store_StopMusic(void);
 
 int Store_CountSounds();
 int Store_CountSprites();

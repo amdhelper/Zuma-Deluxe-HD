@@ -51,6 +51,14 @@ static void VideoInit__() {
 
 
 static void AudioInit__() {
+    // 无头/CI：显式关闭音频（BASS 无法打开设备时否则会致命退出）
+    const char* noAudio = getenv("ZUMA_NO_AUDIO");
+    if (noAudio && noAudio[0] && noAudio[0] != '0') {
+        HQC_Audio_SetEnabled(false);
+        HQC_Log("Audio: disabled by ZUMA_NO_AUDIO");
+        return;
+    }
+
     if (BASS_Init(
         -1,
         MUSIC_FREQUENCY,
@@ -58,8 +66,13 @@ static void AudioInit__() {
         0,
         NULL) == 0
     ) {
-        HQC_RaiseErrorHeaderFormat("BASS DLL", "Initialization fail [%d]", BASS_ErrorGetCode());
+        // 🔴 无音频设备不再致命退出（2026-09-29）：只关闭音频，游戏照常运行
+        HQC_Audio_SetEnabled(false);
+        HQC_Log("Audio: BASS_Init failed [%d] — running without sound", BASS_ErrorGetCode());
+        return;
     }
+
+    HQC_Audio_SetEnabled(true);
 }
 
 
