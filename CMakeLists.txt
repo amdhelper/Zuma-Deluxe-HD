@@ -110,6 +110,23 @@ add_executable(
         src/zuma/Progress.h
 )
 
+# ── 容器单元测试（TODO.txt / ROADMAP 4.3）────────────────────────────────
+# 只链接 HQC_Container.c（零 SDL 依赖）→ 任何机器上都能跑：ctest --test-dir build
+enable_testing()
+
+add_executable(
+    zuma_tests
+        tests/container_test.c
+        src/global/HQC/HQC_Container.c
+)
+
+target_include_directories(
+    zuma_tests PRIVATE
+    "${PROJECT_SOURCE_DIR}/src"
+)
+
+add_test(NAME containers COMMAND zuma_tests)
+
 target_include_directories(
     ZumaHD PUBLIC
     "${PROJECT_BINARY_DIR}"

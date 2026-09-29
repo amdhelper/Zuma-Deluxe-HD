@@ -84,3 +84,61 @@ jobs:
             dist/zuma-deluxe-hd-*.tar.gz \
             dist/zuma-deluxe-hd_*.deb \
             dist/sha256sums.txt --clobber
+
+  # ── Windows x64（MSYS2 + mingw-w64 交叉打包）─────────────────────────────
+  # ⚠️ 实验性：仓库只带 Linux 版 BASS（lib/bass/libs/x86_64/libbass.so），
+  #    没有 Windows 的 lib/bass/x64/bass.dll → 这一步目前会在链接阶段失败。
+  #    补法：把 BASS 的 Windows 包（un4seen bass24.zip / bass_fx24.zip）里的
+  #    bass.dll、bass_fx.dll 放进 lib/bass/x64/ 与 lib/bass-fx/libs/x64/，
+  #    并把 CMakeLists 里 WIN32 分支的 BASS_LIB 指过去，然后去掉 continue-on-error。
+  windows:
+    needs: build-and-release
+    continue-on-error: true
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-SDL2 mingw-w64-x86_64-SDL2_image mingw-w64-x86_64-SDL2_ttf
+            mingw-w64-x86_64-expat zip
+
+      - name: 构建（MINGW64）
+        run: |
+          rm -rf build-win64 && mkdir build-win64
+          cmake -S . -B build-win64 -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-win64
+
+      - name: 出包并上传到 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REL_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          VERSION="${REL_TAG#v}"
+          OUT="dist/zuma-deluxe-hd-${VERSION}-win64"
+          rm -rf "$OUT"; mkdir -p "$OUT"
+
+          cp build-win64/bin/ZumaHD.exe "$OUT/"
+          cp -r content/* "$OUT/"
+          cp lib/bass/x64/bass.dll "$OUT/" 2>/dev/null || true
+          cp lib/bass-fx/libs/x64/bass_fx.dll "$OUT/" 2>/dev/null || true
+
+          BIN="$(cygpath -u "${MINGW_PREFIX}")/bin"
+          for d in SDL2.dll SDL2_image.dll SDL2_ttf.dll libpng16-16.dll zlib1.dll \
+                   libjpeg-8.dll libwebp-7.dll libtiff-5.dll libexpat-1.dll; do
+              cp "$BIN/$d" "$OUT/" 2>/dev/null || true
+          done
+
+          printf '@echo off\r\ncd /d "%%~dp0"\r\nstart "" ZumaHD.exe\r\n' > "$OUT/玩祖玛.bat"
+
+          cd dist
+          zip -qr "$(basename "$OUT").zip" "$(basename "$OUT")"
+          sha256sum "$(basename "$OUT").zip" >> sha256sums.txt
+          gh release upload "$REL_TAG" "$(basename "$OUT").zip" --clobber

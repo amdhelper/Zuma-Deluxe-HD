@@ -171,6 +171,26 @@
 
 ---
 
+## 阶段 5：增量（v0.4.0，本轮）
+
+### 4.3 HQC 容器补齐 ✅
+- `src/global/HQC/HQC_Container.{c,h}`：Vector 删元素/弹出/查找 + 单向链表 + 字符串键字典
+- **单元测试**：`tests/container_test.c`（29 项，含越界/扩容/删除后重插等边界）
+  `cmake --build build && ./build/bin/zuma_tests`（或 `ctest --test-dir build`）
+- ⚠️ Vector 结构不透明：HQC_Container.c 内有一份字段顺序逐字一致的镜像结构，改一边要同步另一边
+
+### 3.7 遮挡贴图（程序化兜底版）✅ 有图了
+- `scripts/make_cutout_masks.py`：按 levels.xml 的 `<Cutout image pri x y>` + 曲线
+  隧道标记点，沿曲线画粗带（颜色取自关卡底图）→ 11 张 `levels/<关卡>/*.png`
+- 观感是色带（程序化），有原版手绘素材时直接替换同名 png 即可
+
+### 4.6 Windows 打包 🟡 脚手架就位（缺 Windows BASS）
+- `scripts/package_windows.sh` + release.yml 的 `windows` job（MSYS2 MINGW64）
+- ⚠️ `continue-on-error: true`：仓库没有 Windows 版 BASS（`lib/bass/x64/bass.dll`），
+  链接会失败。补上 dll（un4seen 官方 bass24.zip / bass_fx24.zip）并让 CMake WIN32 分支
+  指过去，即可去掉该标记
+
+
 ## 阶段 4 — 工程化与收尾（4.1/4.2/4.4/4.5/4.6 ✅；4.3 部分）
 
 - **4.1 内存 ✅**：ASan/LSan（`build-asan`，`-fsanitize=address,undefined`）跑两条自动测试路径
