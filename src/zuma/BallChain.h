@@ -35,6 +35,27 @@ bool      Ball_IsExploding(HBall hball);     // 新
 bool      Ball_IsInTunnel(HBall hball);      // 新（隧道内的球不参与命中判定）
 void      Ball_SetSpeed(HBall hball, float spd);  // 新
 
+// ── 道具球（ROADMAP 3.1）────────────────────────────────────────────────────
+// 素材表里没有道具图标（gameobjects.png 球体条只有纯色球）→ 图标用绘图原语程序化画。
+typedef enum BallBonus {
+    BONUS_NONE = 0,
+    BONUS_EXPLOSION,   // 炸掉附近一圈球（无视颜色）
+    BONUS_SLOWDOWN,    // 球链减速一段
+    BONUS_PAUSE,       // 球链暂停一段
+    BONUS_ACCURACY,    // 精准奖励分
+    BONUS_COUNT
+} BallBonus;
+
+int         Ball_GetBonus(HBall hball);
+void        Ball_SetBonus(HBall hball, int bonus);
+const char* BallBonus_Name(int bonus);
+
+// 道具效果生效时的链速倍率（减速 0.35 / 暂停 0），SceneGame 每帧乘进链速
+float BallChain_GetSpeedMultiplier(HBallChain hchain);
+
+// 本局用掉的道具数（取证/统计）
+int BallChain_PowerupsUsed(void);
+
 ////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 

@@ -5,6 +5,7 @@
 #include "ResourceStore.h"
 #include "Statistics.h"
 #include "AutoTest.h"
+#include "FloatingText.h"
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 球链（链表方向）：
@@ -24,6 +25,9 @@ typedef struct Ball {
     float       spd;
 
     BallColor   color;
+
+    // 道具球（ROADMAP 3.1）：炸开时触发的效果；BONUS_NONE = 普通球
+    int         bonus;
 
     bool        isExploding;
     bool        isNew;          // 出生淡入
@@ -56,6 +60,11 @@ typedef struct BallChain {
     bool  isEndReached;
 
     int   explodedThisFrame;
+
+    // 道具效果（3.1）：effectFrames > 0 时链速乘以 effectMul
+    // （减速 = 0.35、暂停 = 0，由 SceneGame 每帧乘进链速）
+    int   effectFrames;
+    float effectMul;
 
     HBulletList bulletList;
 } BallChain;
@@ -98,6 +107,7 @@ static Ball* Ball_Create__(BallChain* chain, BallColor color, float pos) {
     ball->pos        = pos;
     ball->spd        = 0.0f;
     ball->color      = color;
+    ball->bonus      = BONUS_NONE;
     ball->isExploding   = false;
     ball->isNew         = true;
     ball->isSeparated   = false;
@@ -176,6 +186,30 @@ BallColor Ball_GetColor(HBall hball) {
     return ball ? ball->color : BALL_NONE;
 }
 
+
+// ── 道具球（3.1）────────────────────────────────────────────────────────────
+int Ball_GetBonus(HBall hball) {
+    Ball* ball = _Ball(hball);
+    return ball ? ball->bonus : BONUS_NONE;
+}
+
+
+void Ball_SetBonus(HBall hball, int bonus) {
+    Ball* ball = _Ball(hball);
+    if (ball) ball->bonus = bonus;
+}
+
+
+const char* BallBonus_Name(int bonus) {
+    switch (bonus) {
+        case BONUS_EXPLOSION: return "explosion";
+        case BONUS_SLOWDOWN:  return "slowdown";
+        case BONUS_PAUSE:     return "pause";
+        case BONUS_ACCURACY:  return "accuracy";
+        default:              return "none";
+    }
+}
+
 bool Ball_IsExploding(HBall hball) {
     Ball* ball = _Ball(hball);
     return ball ? ball->isExploding : false;
@@ -252,6 +286,8 @@ HBallChain BallChain_Create(HLevel level, HBulletList bulletList) {
     chain->isGenerating  = true;
     chain->isEndReached  = false;
     chain->explodedThisFrame = 0;
+    chain->effectFrames  = 0;
+    chain->effectMul     = 1.0f;
     chain->bulletList    = bulletList;
 
     return chain;
@@ -395,9 +431,119 @@ static void _FindSameColorGroup(Ball* pivot, Ball** startOut, Ball** endOut, int
 }
 
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// 道具球（3.1）：炸开时触发效果
+// ═══════════════════════════════════════════════════════════════════════════════
+
+static int powerupsUsed = 0;
+
+int BallChain_PowerupsUsed(void) { return powerupsUsed; }
+
+
+// 把附近一圈球（按曲线距离，不看颜色）一起炸掉
+static int _ExplodeBallsNear(BallChain* chain, float centerPos, float radius) {
+    int count = 0;
+
+    for (Ball* b = chain->start; b != NULL; b = b->next) {
+        if (b->isExploding) continue;
+        if (b->pos < 0.0f) continue;
+
+        float d = b->pos - centerPos;
+        if (d < 0) d = -d;
+        if (d > radius) continue;
+
+        b->isExploding = true;
+        b->spd         = 0.0f;
+
+        if (b->animation) HQC_Animation_Free(b->animation);
+        b->animation = HQC_Animation_Clone(Store_GetAnimationByID(ANIM_BALL_DESTROY));
+        HQC_Animation_SetFrame(b->animation, 0);
+        HQC_Animation_SetLooping(b->animation, false);
+        HQC_Animation_SetSpeed(b->animation, BALL_EXPLODE_SPEED);
+
+        count++;
+    }
+
+    return count;
+}
+
+
+// 触发一颗球上的道具（在它被炸掉时调用）
+static void _Ball_ApplyBonus(BallChain* chain, Ball* ball) {
+    if (!chain || !ball || ball->bonus == BONUS_NONE) return;
+
+    int bonus = ball->bonus;
+    ball->bonus = BONUS_NONE;      // 只触发一次
+
+    powerupsUsed++;
+
+    switch (bonus) {
+        case BONUS_EXPLOSION: {
+            v2f_t p = Ball_GetPositionCoords(ball);
+
+            int count = _ExplodeBallsNear(chain, ball->pos, 180.0f);
+
+            if (count > 0) {
+                int points = Statistics_RegisterExplosion(count, ball->color,
+                                                          Statistics_ChainBonus(), 1);
+                Statistics_BuildAndInstantiateFloatingText(p.x, p.y, 0xFF8000);
+                chain->explodedThisFrame = 1;
+            }
+
+            HQC_DJ_PlaySound(Store_GetSoundByID(SND_BOMBEXPLODE));
+            FloatingTextFactory_Instantiate(p.x, p.y - 40, 0xFF8000, "BOMB!");
+            break;
+        }
+
+        case BONUS_SLOWDOWN:
+            chain->effectFrames = 180;
+            chain->effectMul    = 0.35f;
+            HQC_DJ_PlaySound(Store_GetSoundByID(SND_SLOWDOWN1));
+            break;
+
+        case BONUS_PAUSE:
+            chain->effectFrames = 90;
+            chain->effectMul    = 0.0f;
+            HQC_DJ_PlaySound(Store_GetSoundByID(SND_CHIME1));
+            break;
+
+        case BONUS_ACCURACY:
+            Statistics_AddScore(1000);
+            HQC_DJ_PlaySound(Store_GetSoundByID(SND_ACCURACY3));
+            break;
+
+        default:
+            break;
+    }
+
+    AutoTest_Event("POWERUP_USED", "name=%s used=%d", BallBonus_Name(bonus), powerupsUsed);
+    AutoTest_Observe("powerups", powerupsUsed);
+}
+
+
+float BallChain_GetSpeedMultiplier(HBallChain hchain) {
+    BallChain* chain = Cast__(hchain);
+    if (!chain) return 1.0f;
+
+    if (chain->effectFrames <= 0) {
+        chain->effectFrames = 0;
+        chain->effectMul    = 1.0f;
+        return 1.0f;
+    }
+
+    chain->effectFrames--;
+
+    return chain->effectMul;
+}
+
+
 static int _ExplodeGroup(BallChain* chain, Ball* s, Ball* e, int isChainReaction) {
     int count = 0;
     for (Ball* b = s; b != NULL; b = b->next) { count++; if (b == e) break; }
+
+    // 本组里带道具的球（爆炸后统一触发，见下）
+    Ball* bonusBalls[16];
+    int   bonusCount = 0;
 
     Ball* mid = s;
     for (int i = 0; i < count / 2 && mid->next != NULL; i++) mid = mid->next;
@@ -418,8 +564,16 @@ static int _ExplodeGroup(BallChain* chain, Ball* s, Ball* e, int isChainReaction
         HQC_Animation_SetLooping(b->animation, false);
         HQC_Animation_SetSpeed(b->animation, BALL_EXPLODE_SPEED);
 
+        // 道具球（3.1）：被炸掉时触发它带的效果
+        if (b->bonus != BONUS_NONE && bonusCount < 16)
+            bonusBalls[bonusCount++] = b;
+
         if (b == e) break;
     }
+
+    // 爆炸之后再触发道具（避免正在遍历链表时改动链）
+    for (int i = 0; i < bonusCount; i++)
+        _Ball_ApplyBonus(chain, bonusBalls[i]);
 
     // 连击越高音调越高（原版手感）
     HQC_DJ_PlaySoundPitch(Store_GetSoundByID(SND_BALLSDESTROYED1), (float)(combo * 2));
@@ -597,6 +751,8 @@ HLevel BallChain_GetLevel(HBallChain hchain) {
 // 链：绘制
 ////////////////////////////////////////////////////////////////////////////////
 
+static void _Ball_DrawBonusIcon(int bonus, float x, float y);
+
 static void _Ball_Draw(Ball* ball) {
     if (!ball) return;
     if (ball->pos < 0.0f) return;
@@ -629,6 +785,46 @@ static void _Ball_Draw(Ball* ball) {
     HQC_Artist_DrawAnimation(ball->animation, pos.x, pos.y);
     HQC_Artist_DrawSetAlpha(1.0f);
     HQC_Artist_DrawSetAngle(0.0f);
+
+    // 道具球（3.1）：在球面中央画程序化图标（素材表里没有道具图标）
+    if (ball->bonus != BONUS_NONE)
+        _Ball_DrawBonusIcon(ball->bonus, pos.x, pos.y);
+}
+
+
+// 道具图标：纯绘图原语（方/条/十字），一眼能分辨四种效果
+static void _Ball_DrawBonusIcon(int bonus, float x, float y) {
+    switch (bonus) {
+        case BONUS_EXPLOSION:   // 橙底黑心 = 炸弹
+            HQC_Artist_SetColorHex(0xFF8000);
+            HQC_Artist_FillRect(x - 9, y - 9, 18, 18);
+            HQC_Artist_SetColorHex(C_BLACK);
+            HQC_Artist_FillRect(x - 4, y - 4, 8, 8);
+            break;
+
+        case BONUS_SLOWDOWN:    // 两根横条 = 减速
+            HQC_Artist_SetColorHex(C_CYAN);
+            HQC_Artist_FillRect(x - 9, y - 6, 18, 4);
+            HQC_Artist_FillRect(x - 9, y + 2, 18, 4);
+            break;
+
+        case BONUS_PAUSE:       // 双竖条 = 暂停
+            HQC_Artist_SetColorHex(C_WHITE);
+            HQC_Artist_FillRect(x - 7, y - 9, 5, 18);
+            HQC_Artist_FillRect(x + 2, y - 9, 5, 18);
+            break;
+
+        case BONUS_ACCURACY:    // 十字准心 = 精准奖励
+            HQC_Artist_SetColorHex(0xFFF0A0);
+            HQC_Artist_FillRect(x - 9, y - 2, 18, 4);
+            HQC_Artist_FillRect(x - 2, y - 9, 4, 18);
+            break;
+
+        default:
+            break;
+    }
+
+    HQC_Artist_SetColorHex(C_WHITE);
 }
 
 
@@ -838,6 +1034,30 @@ int BallChainGenerator_GeneratedCount(HBallChainGenerator hballChainGenerator) {
 }
 
 
+// 道具球生成概率（3.1）：每颗新球 7%
+static int _RollBonus(void) {
+    if ((rand() % 100) >= 7)
+        return BONUS_NONE;
+
+    return BONUS_EXPLOSION + (rand() % (BONUS_COUNT - 1));
+}
+
+
+// 生成一颗球，并按概率给它带上道具
+static void _GenerateOne(BallChain* chain, Generator* gen) {
+    HBall nb = BallChain_AppendBall((HBallChain)chain, _Chain_PickColor(chain));
+
+    int bonus = _RollBonus();
+    if (nb && bonus != BONUS_NONE) {
+        Ball_SetBonus(nb, bonus);
+
+        AutoTest_Event("POWERUP_SPAWNED", "name=%s", BallBonus_Name(bonus));
+    }
+
+    gen->generated++;
+}
+
+
 void BallChainGenerator_Update(HBallChainGenerator hballChainGenerator) {
     Generator* gen = (Generator*)hballChainGenerator;
     if (!gen || !gen->chain) return;
@@ -852,17 +1072,16 @@ void BallChainGenerator_Update(HBallChainGenerator hballChainGenerator) {
     Ball* back = chain->start;
 
     if (back == NULL) {
-        BallChain_AppendBall((HBallChain)chain, _Chain_PickColor(chain));
-        gen->generated++;
+        _GenerateOne(chain, gen);
         return;
     }
 
     if (gen->fastMode && gen->generated < gen->initialCount) {
         // 首屏快速铺满：链尾推进就补球（间距由链的"分离相位"撑开到 32）
-        if (back->pos >= 0.5f) {
-            BallChain_AppendBall((HBallChain)chain, _Chain_PickColor(chain));
-            gen->generated++;
-        }
+        // ⚠️ 道具也要在这一阶段生成：开局铺满常常就把 gauge 打满了，
+        //    只给"常规阶段"roll 的话一局可能一颗道具都不出（实测 0 次）
+        if (back->pos >= 0.5f)
+            _GenerateOne(chain, gen);
 
         if (gen->generated >= gen->initialCount)
             gen->fastMode = false;
@@ -871,8 +1090,6 @@ void BallChainGenerator_Update(HBallChainGenerator hballChainGenerator) {
     }
 
     // 常规节奏：链尾推进一个身位就补一颗
-    if (back->pos >= BALLS_CHAIN_PAD) {
-        BallChain_AppendBall((HBallChain)chain, _Chain_PickColor(chain));
-        gen->generated++;
-    }
+    if (back->pos >= BALLS_CHAIN_PAD)
+        _GenerateOne(chain, gen);
 }

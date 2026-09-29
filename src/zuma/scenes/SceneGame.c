@@ -66,6 +66,8 @@ struct {
     int   nearHole;
     int   warnTimer;
 
+    int   effectFrame;        // 道具效果持续帧数（打点用）
+
     int   frame;
     int   comboWindow;        // 连击窗口（帧）
 
@@ -186,6 +188,9 @@ static void _Game_BuildResultDialog() {
 
     snprintf(game.resultLines[5], 96, "Best %d", best);
     Dialogbox_AddTextEx(dlg, game.resultLines[5], valX, -96, C_WHITE);
+
+    snprintf(game.resultLines[6], 96, "Powerups used %d", BallChain_PowerupsUsed());
+    Dialogbox_AddTextEx(dlg, game.resultLines[6], 0, -60, C_CYAN);
 
     // 按钮：主按钮放最后（= 最下面），符合"主要动作在底部"
     HButton replay = Button_Create(640, 0);
@@ -389,6 +394,7 @@ static int _Game_LoadLevel() {
 
     game.nearHole   = 0;
     game.warnTimer  = 60;
+    game.effectFrame = 0;
 
     _Game_ClearResultDialog();
 
@@ -805,13 +811,32 @@ static void Game_Update__() {
         return;
     }
 
-    // ── 生成速度：靠近洞就减速（原版 slowFactor）──────────────────────────
+    // ── 生成速度：靠近洞就减速（原版 slowFactor）+ 道具效果倍率（3.1）──────
     float baseSpeed = game.settings->ballSpd;
+
     if (!BallChain_IsEndReached(game.chain)) {
         if (BallChain_FrontProgress(game.chain) > 0.8f)
-            BallChain_SetSpeed(game.chain, baseSpeed / game.settings->slowFactor);
-        else
-            BallChain_SetSpeed(game.chain, baseSpeed);
+            baseSpeed = baseSpeed / game.settings->slowFactor;
+
+        // 减速/暂停道具：倍率在 BallChain 里倒计时（每帧取一次）
+        float mul = BallChain_GetSpeedMultiplier(game.chain);
+        float speed = baseSpeed * mul;
+
+        BallChain_SetSpeed(game.chain, speed);
+
+        // 效果生效期打点：证明链速真的被乘过（比如暂停 = mul 0.00）
+        if (mul != 1.0f) {
+            if (game.effectFrame == 0)
+                AutoTest_Event("EFFECT_START", "mul=%.2f speed=%.3f base=%.2f", mul, speed, baseSpeed);
+
+            if (game.effectFrame % 30 == 0)
+                AutoTest_Event("EFFECT_ACTIVE", "mul=%.2f speed=%.3f", mul, speed);
+
+            game.effectFrame++;
+        } else if (game.effectFrame > 0) {
+            AutoTest_Event("EFFECT_END", "frames=%d", game.effectFrame);
+            game.effectFrame = 0;
+        }
     }
 
     // ── 接近洞的紧张感（ROADMAP 3.4）：音乐切 NEAR_HOLE + 周期警告音 ────────

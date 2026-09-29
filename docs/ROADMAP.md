@@ -21,7 +21,7 @@
 | `HQC_DJ_LoadMusic` 是空函数（缺 return）、PlayMusic 空实现 | 全程无声 | ✅ 已修（BASS MOD + order 切曲） |
 | 输入边沿检测放在查询函数里（静态变量） | 同帧第二个调用者拿不到 pressed → 点击"没反应" | ✅ 已修（每帧锁存） |
 | 青蛙颜色硬编码 4 色、关卡 `colors`/`gx`/`gy`/`TreasurePoint`/`image-top` 不解析 | 难度不生效、青蛙位置不对、没有宝石与隧道层 | ✅ 已修 |
-| 主菜单只有 3 个文字按钮（开始/测试/退出） | 不能选关选难度、没有存档 | ⬜ 阶段 2 |
+| 主菜单只有 3 个文字按钮（开始/测试/退出） | 不能选关选难度、没有存档 | ✅ 已修（阶段 2：菜单/选关/难度/存档/结算） |
 | ESC 直接退出整个程序 | 不能暂停 | ✅ 已修（暂停菜单） |
 
 ---
@@ -90,16 +90,24 @@
 
 ---
 
-## 阶段 3 — 玩法深度（3.2/3.3/3.4/3.6 ✅ 已完成；3.1/3.5/3.7 待办）
+## 阶段 3 — 玩法深度（3.1/3.2/3.3/3.4/3.6 ✅ 已完成；3.5 部分、3.7 待办）
 
-### 3.1 道具球（power-ups）⬜ 待办（卡在素材）
-- `content/images/gameobjects.png` 实测：6 列球体条**只有纯色球**（蓝 47 帧、其余 50 帧，
-  每列尾部 3 帧是空的），**没有道具图标帧**；道具音效齐全
-  （`SND_BOMBEXPLODE / SND_REVERSE1 / SND_SLOWDOWN1 / SND_ACCURACY3 / SND_GAPBONUS1`）
-- 结论：要做道具球，先得确定图标素材来源（在 `gameinterface.png` 里逐块确认，
-  或程序化画图标）。**未做，不要假装做了。**
-- 生成：按独立概率生成带 bonus 的球；生效：炸开时触发（倒退/炸弹/暂停/精准加分）
-- 验收：`--autotest` 事件里出现 `POWERUP_USED name=reverse` 且行为可见
+### 3.1 道具球（power-ups）✅
+- 素材说明：`content/images/gameobjects.png` 的球体条**只有纯色球**（蓝 47 帧、其余 50 帧，
+  尾部 3 帧空白），没有道具图标帧 → 图标改用**绘图原语程序化画**（橙方块=炸弹、
+  青横条=减速、白双竖条=暂停、浅黄十字=精准），音效用现成的
+  （`SND_BOMBEXPLODE / SND_SLOWDOWN1 / SND_CHIME1 / SND_ACCURACY3`）
+- 生成：每颗新球 7% 概率带道具（**开局铺满阶段也 roll**——只给常规阶段 roll 时实测一局 0 个）
+- 生效：该球被炸掉时触发 —— 炸弹=炸掉曲线距离 180px 内的球（无视颜色，走
+  `Statistics_RegisterExplosion` 记分）、减速=链速 ×0.35 持续 180 帧、暂停=链速 ×0
+  持续 90 帧、精准=+1000 分；效果倍率由 `BallChain_GetSpeedMultiplier` 倒计时，
+  SceneGame 每帧乘进链速
+- 事件：`POWERUP_SPAWNED name=..` / `POWERUP_USED name=.. used=N` /
+  `EFFECT_START|EFFECT_ACTIVE|EFFECT_END mul=.. speed=..`；结算界面显示 `Powerups used N`
+- 实测：8000 帧一局 5~7 次道具生效（四种都出现过）；
+  效果证据 `EFFECT_START mul=0.35 speed=0.175 base=0.50` → `EFFECT_END frames=180`（减速）、
+  `mul=0.00 speed=0.000` → `EFFECT_END frames=90`（暂停）；
+  截图里能定位到青色图标块（x 643~842 / y 375~674，即减速道具球所在链段）
 
 ### 3.2 关卡开场动画 ✅
 - 开场：火花沿曲线跑一遍（`Level_GetCurveCoords` + `ANIM_SPARKLE`）+ 关卡名缩放淡入，
