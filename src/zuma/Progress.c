@@ -1,5 +1,14 @@
 #include "Progress.h"
 
+// 建目录：POSIX mkdir(path, mode) / Windows _mkdir(path)（参数个数不同）
+#ifdef _WIN32
+    #include <direct.h>
+    #define _Progress_MkDir(p, mode) _mkdir(p)
+#else
+    #include <sys/stat.h>
+    #define _Progress_MkDir(p, mode) mkdir((p), (mode))
+#endif
+
 #include "../global/HQC.h"
 #include "LevelMgr.h"
 
@@ -46,9 +55,9 @@ static void _Progress_EnsurePath() {
 
     char dir[512];
     snprintf(dir, sizeof(dir), "%s/.local/share", home);
-    mkdir(dir, 0755);
+    _Progress_MkDir(dir, 0755);
     snprintf(dir, sizeof(dir), "%s/.local/share/zumahd", home);
-    mkdir(dir, 0755);
+    _Progress_MkDir(dir, 0755);
 
     snprintf(prog.path, sizeof(prog.path), "%s/.local/share/zumahd/progress.dat", home);
 }
