@@ -42,6 +42,7 @@ jobs:
 
       - name: 构建
         run: |
+          rm -rf build                     # 仓库历史里跟踪过 build/，清掉避免旧 CMakeCache 报 source mismatch
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
           cmake --build build -j"$(nproc)"
 

@@ -9,3 +9,7 @@ compile.bat
 Makefile
 
 old_src
+# 构建产物 / 出包产物（2026-09-29：CI 克隆到旧 CMakeCache 会配置失败）
+build/
+build-asan/
+dist/

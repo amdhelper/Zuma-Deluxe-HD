@@ -35,7 +35,9 @@ jobs:
             || echo "SDL_ttf clone 失败，改用系统库"
 
       - name: 配置
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+        run: |
+          rm -rf build                     # 仓库历史里跟踪过 build/，清掉避免旧 CMakeCache 报 source mismatch
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 
       - name: 构建
         run: cmake --build build -j"$(nproc)"
