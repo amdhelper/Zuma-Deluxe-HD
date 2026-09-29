@@ -9,9 +9,18 @@
 #include "UsefulTypes.h"
 #include "HQC_Key.h"
 
-typedef int bool;
-#define true  1
-#define false 0
+// bool / true / false
+//   C99~C17：用 <stdbool.h>
+//   C23（GCC 13+ 默认 gnu23，mingw 上踩过）：bool 已经是关键字，
+//   再 typedef 会报 "'bool' cannot be defined via 'typedef'"
+//   C++：语言自带
+#if defined(__cplusplus)
+    // 什么都不用做
+#elif defined(__STDC_VERSION__) && __STDC_VERSION__ > 201710L
+    // C23：bool/true/false 是关键字
+#else
+    #include <stdbool.h>
+#endif
 
 
 ////////////////////////////////////////////////////////////////////////
