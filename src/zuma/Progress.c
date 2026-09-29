@@ -20,7 +20,7 @@
 #define PROG_MAX_STAGES  16
 #define PROG_MAX_LEVELS  32
 
-#define PROG_VERSION     1
+#define PROG_VERSION     2
 
 typedef struct {
     int score;
@@ -32,6 +32,12 @@ static struct {
 
     int unlockedStage;
     int unlockedLevel;
+
+    unsigned char stars[PROG_MAX_STAGES][PROG_MAX_LEVELS];   // 0..3
+
+    // Gauntlet 排行榜（分数降序，最多 PROG_BOARD_SIZE 条）
+    int boardCount;
+    ProgressGauntletEntry board[PROG_BOARD_SIZE];
 
     int currentStage;
     int currentLevel;
@@ -120,6 +126,20 @@ void Progress_Load() {
             }
             continue;
         }
+
+        // stars <stage> <level> <0..3>
+        if (sscanf(line, "stars %d %d %d", &s, &l, &score) == 3) {
+            if (s >= 0 && s < PROG_MAX_STAGES && l >= 0 && l < PROG_MAX_LEVELS)
+                prog.stars[s][l] = (unsigned char)(score < 0 ? 0 : (score > 3 ? 3 : score));
+            continue;
+        }
+
+        // gauntlet <score> <wave> <difficulty> <seconds>
+        if (sscanf(line, "gauntlet %d %d %d %d", &score, &s, &l, &sec) == 4) {
+            // 文件里的顺序可能是任意的（手改过也算）→ 走同一套插入逻辑保持有序
+            Progress_GauntletSubmit(score, s, l, sec);
+            continue;
+        }
     }
 
     fclose(f);
@@ -156,6 +176,20 @@ void Progress_Save() {
             fprintf(f, "best %d %d %d %d\n", s, l,
                     prog.records[s][l].score, prog.records[s][l].seconds);
         }
+    }
+
+    // 星级
+    for (int s = 0; s < PROG_MAX_STAGES; s++) {
+        for (int l = 0; l < PROG_MAX_LEVELS; l++) {
+            if (prog.stars[s][l] > 0)
+                fprintf(f, "stars %d %d %d\n", s, l, (int)prog.stars[s][l]);
+        }
+    }
+
+    // Gauntlet 排行榜
+    for (int i = 0; i < prog.boardCount; i++) {
+        fprintf(f, "gauntlet %d %d %d %d\n", prog.board[i].score, prog.board[i].wave,
+                prog.board[i].difficulty, prog.board[i].seconds);
     }
 
     fclose(f);
@@ -245,4 +279,112 @@ void Progress_ReportLevel(int stage, int level, int score, int seconds, int comp
     HQC_Log("Progress: report %d-%d score=%d (%s) time=%ds (best score %d, best time %ds)",
             stage + 1, level + 1, score, completed ? "completed" : "failed", seconds,
             rec->score, rec->seconds);
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+// 星级（ROADMAP 3.10）
+////////////////////////////////////////////////////////////////////////////////
+
+int Progress_GetStars(int stage, int level) {
+    if (stage < 0 || stage >= PROG_MAX_STAGES || level < 0 || level >= PROG_MAX_LEVELS)
+        return 0;
+
+    return (int)prog.stars[stage][level];
+}
+
+
+int Progress_ReportStars(int stage, int level, int score, int gaugeScore) {
+    if (stage < 0 || stage >= PROG_MAX_STAGES || level < 0 || level >= PROG_MAX_LEVELS)
+        return 0;
+
+    if (gaugeScore <= 0) gaugeScore = 1000;   // 兜底，免得除 0
+
+    int stars = 0;
+
+    if (score >= (gaugeScore * 140) / 100)      stars = 3;   // 过线 140%
+    else if (score >= (gaugeScore * 115) / 100) stars = 2;   // 过线 115%
+    else if (score >= gaugeScore)               stars = 1;   // 刚好过线
+
+    // 只升不降：以前拿过 3 星，这局打差了不该退回 2 星
+    if (stars > (int)prog.stars[stage][level])
+        prog.stars[stage][level] = (unsigned char)stars;
+
+    HQC_Log("Progress: stars %d-%d = %d (score %d vs gauge %d, best %d)",
+            stage + 1, level + 1, stars, score, gaugeScore,
+            (int)prog.stars[stage][level]);
+
+    // ⚠️ 必须落盘（prog.loaded 为 0 说明还在 Load 里，不能反向写文件）
+    if (prog.loaded)
+        Progress_Save();
+
+    return stars;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Gauntlet 排行榜（ROADMAP 3.11）
+////////////////////////////////////////////////////////////////////////////////
+
+int Progress_GauntletCount() {
+    return prog.boardCount;
+}
+
+
+const ProgressGauntletEntry* Progress_GauntletEntryAt(int index) {
+    if (index < 0 || index >= prog.boardCount)
+        return NULL;
+
+    return &prog.board[index];
+}
+
+
+int Progress_GauntletBest() {
+    return prog.boardCount > 0 ? prog.board[0].score : 0;
+}
+
+
+void Progress_GauntletClear() {
+    prog.boardCount = 0;
+    memset(prog.board, 0, sizeof(prog.board));
+}
+
+
+int Progress_GauntletSubmit(int score, int wave, int difficulty, int seconds) {
+    if (score <= 0)
+        return 0;
+
+    // 找插入位置：分数降序；同分则目数多的排前面
+    int pos = prog.boardCount;
+
+    for (int i = 0; i < prog.boardCount; i++) {
+        if (score > prog.board[i].score ||
+            (score == prog.board[i].score && wave > prog.board[i].wave)) {
+            pos = i;
+            break;
+        }
+    }
+
+    // 进不了前 5 名
+    if (pos >= PROG_BOARD_SIZE)
+        return 0;
+
+    int last = prog.boardCount < PROG_BOARD_SIZE ? prog.boardCount : PROG_BOARD_SIZE - 1;
+
+    for (int i = last; i > pos; i--)
+        prog.board[i] = prog.board[i - 1];
+
+    prog.board[pos].score      = score;
+    prog.board[pos].wave       = wave;
+    prog.board[pos].difficulty = difficulty;
+    prog.board[pos].seconds    = seconds;
+
+    if (prog.boardCount < PROG_BOARD_SIZE)
+        prog.boardCount++;
+
+    // 落盘（Load 期间 prog.loaded 还是 0 → 不会在读取时写回文件）
+    if (prog.loaded)
+        Progress_Save();
+
+    return pos + 1;   // 1-based 名次
 }

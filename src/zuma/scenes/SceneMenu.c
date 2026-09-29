@@ -171,9 +171,22 @@ private void _DrawPreview(HQC_Texture tex, int cx, int cy, int cellW, int cellH,
 private void _StartAdventure() {
     LevelMgr_ClampProgress(&menu.stage, &menu.selLevel);
     _SetPane(PANE_ADVENTURE);
+
+    // 让自动测试能断言"菜单读到的星级与存档一致"
+    AutoTest_Event("MENU_STARS", "stage=%d stars=%d,%d,%d,%d,%d sel=%d",
+                   menu.stage,
+                   Progress_GetStars(menu.stage, 0), Progress_GetStars(menu.stage, 1),
+                   Progress_GetStars(menu.stage, 2), Progress_GetStars(menu.stage, 3),
+                   Progress_GetStars(menu.stage, 4), menu.selLevel);
 }
 
-private void _StartGauntletPane() { _SetPane(PANE_GAUNTLET); }
+private void _StartGauntletPane() {
+    _SetPane(PANE_GAUNTLET);
+
+    // 让自动测试能断言"排行榜面板被打开、榜上有几条"
+    AutoTest_Event("GAUNTLET_BOARD_VIEW", "entries=%d best=%d",
+                   Progress_GauntletCount(), Progress_GauntletBest());
+}
 
 private void _StartGauntletMode(int difficulty) {
     // Gauntlet：无限球流 + 每周目提速（ROADMAP 3.6）
@@ -319,6 +332,40 @@ private void _DrawAdventurePane() {
                                 (float)x, (float)(y + cellH / 2 + 38));
         }
 
+        // 星级（ROADMAP 3.10）：格子正上方三颗方块，拿到=金色，没拿到=暗灰
+        // ⚠️ 必须显式把 alpha 拉回 1.0：预览/未解锁格子的绘制会留下 0.x 的 alpha，
+        //    否则这三颗方块会"画了但看不见"（FillRect 用的是当前 alpha）
+        HQC_Artist_DrawSetAlpha(1.0f);
+
+        int stars = Progress_GetStars(menu.stage, i);
+
+        // 用文字星（*）而不是色块：文字走字体渲染路径，最稳
+        {
+            char starBuf[8];
+            int  k = 0;
+
+            for (; k < stars && k < 3; k++)
+                starBuf[k] = '*';
+
+            starBuf[k] = 0;
+
+            HQC_Artist_SetColorHex(stars > 0 ? 0xFFD24A : 0x9A9A9A);
+            HQC_Artist_DrawText(Store_GetFontByID(FONT_CANCUN_10),
+                                stars > 0 ? starBuf : ". . .",
+                                (float)x, (float)(y - cellH / 2 - 16));
+            HQC_Artist_SetColorHex(C_WHITE);
+        }
+
+        for (int s = 0; s < 3; s++) {
+            float sx = (float)(x - 26 + s * 26);
+            float sy = (float)(y - cellH / 2 - 16);
+
+            HQC_Artist_SetColorHex(s < stars ? 0xFFD24A : 0x4A4A4A);
+            HQC_Artist_FillRect(sx - 9, sy - 9, 18, 18);
+        }
+
+        HQC_Artist_SetColorHex(C_WHITE);
+
         if (hovered && !menu.clicked && HQC_Input_MouseLeftPressed()) {
             menu.clicked = 1;
             menu.selLevel = i;
@@ -406,6 +453,8 @@ private void _DrawGauntletPane() {
     HQC_Sprite screen = Store_GetSpriteByID(SPR_MENU_SCREEN_GAUNTLET);
     if (screen) HQC_Artist_DrawSprite(screen, 640, 360);
 
+    char buff[160];
+
     HQC_Artist_SetColorHex(C_WHITE);
     HQC_Artist_DrawText(Store_GetFontByID(FONT_CANCUN_13), "GAUNTLET", 640, 60);
     HQC_Artist_DrawText(Store_GetFontByID(FONT_CANCUN_10),
@@ -426,6 +475,29 @@ private void _DrawGauntletPane() {
 
         HQC_Artist_SetColorHex(C_WHITE);
         HQC_Artist_DrawText(Store_GetFontByID(FONT_CANCUN_8), kGauntletModes[i].desc, (float)x, (float)(y + 92));
+    }
+
+    // ── 排行榜（ROADMAP 3.11）：前 5 名，分数降序（右侧一列）──────────────
+    HQC_Artist_SetColorHex(C_YELLOW);
+    HQC_Artist_DrawText(Store_GetFontByID(FONT_CANCUN_10), "BEST 5", 1140, 200);
+
+    int boardN = Progress_GauntletCount();
+
+    if (boardN == 0) {
+        HQC_Artist_SetColorHex(0x909090);
+        HQC_Artist_DrawText(Store_GetFontByID(FONT_CANCUN_8), "no runs yet", 1140, 240);
+    } else {
+        for (int i = 0; i < boardN; i++) {
+            const ProgressGauntletEntry* e = Progress_GauntletEntryAt(i);
+            if (!e) continue;
+
+            snprintf(buff, sizeof(buff), "%d. %d  W%d  %s", i + 1, e->score, e->wave,
+                     GameDifficulty_Name(e->difficulty));
+
+            HQC_Artist_SetColorHex(i == 0 ? C_YELLOW : C_WHITE);
+            HQC_Artist_DrawText(Store_GetFontByID(FONT_CANCUN_8), buff, 1140,
+                                (float)(240 + i * 42));
+        }
     }
 
     if (_ImageButton(SPR_MENU_GAUNT_BTN_BACK, SPR_MENU_GAUNT_BTN_BACK_HOVER, 640, 600, 1.2f))

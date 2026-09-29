@@ -191,6 +191,26 @@
   指过去，即可去掉该标记
 
 
+### 3.10 关卡星级 ✅
+- 过关按分数评星：1 星 = 过线（score ≥ gauge）、2 星 = 过线 115%、3 星 = 过线 140%
+  （gauge 用关卡自己的 gaugeScore，本来就随难度不同）
+- **只升不降**：以前拿过 3 星，这局打差了不会退回 2 星
+- 存档新增 `stars <stage> <level> <0..3>` 行（PROG_VERSION 2，旧存档照样能读）
+- 界面：选关格子正上方三颗方块（金色=拿到，暗灰=没有）；结算对话框加一行 `Rating N / 3 stars`
+- 验证：`LEVEL_STARS stars=3 score=3697 gauge=1000`，存档里出现 `stars 0 0 3`
+
+### 3.11 Gauntlet 排行榜 ✅
+- 存档前 5 名（分数降序，同分比目数）：`gauntlet <score> <wave> <difficulty> <seconds>`
+- 结算时自动提交并显示名次：结果行 `Wave N  Board #2  (best 1234)`
+- 菜单 Gauntlet 面板右侧一列 `BEST 5` 榜（1. 分数 W目数 难度）
+- 事件：`GAUNTLET_BOARD rank=.. score=.. wave=.. entries=.. best=..`（提交）、
+  `GAUNTLET_BOARD_VIEW entries=.. best=..`（打开面板）
+- ⚠️ 分数为 0 的局不进榜（没有意义）
+- ⚠️ `Progress_ReportStars` / `Progress_GauntletSubmit` 内部必须自己 `Progress_Save()`
+  （只有 `Progress_ReportLevel` 会存；漏了会"看起来正常但重启就丢"），
+  且用 `prog.loaded` 守卫，避免在读档过程中反向写文件
+
+
 ## 阶段 4 — 工程化与收尾（4.1/4.2/4.4/4.5/4.6 ✅；4.3 部分）
 
 - **4.1 内存 ✅**：ASan/LSan（`build-asan`，`-fsanitize=address,undefined`）跑两条自动测试路径

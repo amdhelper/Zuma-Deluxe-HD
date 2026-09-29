@@ -27,6 +27,30 @@ int  Progress_GetBestSeconds(int stage, int level);  // 0 = 无记录
 // 一关结束时调用（胜负都算成绩）：更新最高分/最佳用时；过关则解锁下一关
 void Progress_ReportLevel(int stage, int level, int score, int seconds, int completed);
 
+// 星级：0..3（0 = 没记录 / 未过关）
+int  Progress_GetStars(int stage, int level);
+
+// 过关时结算星级：1 星=过线，2 星=过线 115%，3 星=过线 140%
+// （gaugeScore 来自关卡设置，已随难度不同；返回本次拿到的星数 1..3）
+int  Progress_ReportStars(int stage, int level, int score, int gaugeScore);
+
+// ── Gauntlet 排行榜（前 5 名，分数降序，同分比目数）─────────────────────────
+#define PROG_BOARD_SIZE 5
+
+typedef struct {
+    int score;
+    int wave;
+    int difficulty;   // 0..3
+    int seconds;
+} ProgressGauntletEntry;
+
+int  Progress_GauntletCount(void);                                     // 榜上条目数（<=5）
+const ProgressGauntletEntry* Progress_GauntletEntryAt(int index);      // NULL = 越界
+int  Progress_GauntletSubmit(int score, int wave, int difficulty, int seconds);
+                                                                       // 返回名次 1..5；未上榜 0
+int  Progress_GauntletBest(void);                                      // 榜首分数，0 = 空榜
+void Progress_GauntletClear(void);                                     // 清空榜单
+
 const char* Progress_FilePath(void);
 
 #endif // ZUMAHD_PROGRESS_H

@@ -192,6 +192,29 @@ static void _Game_BuildResultDialog() {
     snprintf(game.resultLines[6], 96, "Powerups used %d", BallChain_PowerupsUsed());
     Dialogbox_AddTextEx(dlg, game.resultLines[6], 0, -60, C_CYAN);
 
+    // 星级 / Gauntlet 名次（ROADMAP 3.10 / 3.11）
+    if (gGameOptions.gauntlet) {
+        int rank = Progress_GauntletSubmit(score, gGameOptions.gauntletWave,
+                                           gGameOptions.gauntletDifficulty, secs);
+
+        if (rank > 0)
+            snprintf(game.resultLines[7], 96, "Wave %d   Board #%d  (best %d)",
+                     gGameOptions.gauntletWave, rank, Progress_GauntletBest());
+        else
+            snprintf(game.resultLines[7], 96, "Wave %d   Board --  (best %d)",
+                     gGameOptions.gauntletWave, Progress_GauntletBest());
+
+        Dialogbox_AddTextEx(dlg, game.resultLines[7], 0, -24, C_YELLOW);
+
+        AutoTest_Event("GAUNTLET_BOARD", "rank=%d score=%d wave=%d entries=%d best=%d",
+                       rank, score, gGameOptions.gauntletWave,
+                       Progress_GauntletCount(), Progress_GauntletBest());
+    } else if (game.levelComplete) {
+        snprintf(game.resultLines[7], 96, "Rating %d / 3 stars",
+                 Progress_GetStars(stage, level));
+        Dialogbox_AddTextEx(dlg, game.resultLines[7], 0, -24, 0xFFD24A);
+    }
+
     // 按钮：主按钮放最后（= 最下面），符合"主要动作在底部"
     HButton replay = Button_Create(640, 0);
     Button_SetText(replay, "Replay Level");
@@ -622,6 +645,16 @@ static void _Game_CheckEnd() {
         // 进度存档：最高分 / 最佳用时 / 解锁下一关（ROADMAP 2.4）
         Progress_ReportLevel(LevelMgr_CurrentStage0(), LevelMgr_CurrentLevel0(),
                              Statistics_Score(), game.levelSeconds, 1);
+
+        // 星级（ROADMAP 3.10）：1 星=过线，2 星=过线 115%，3 星=过线 140%
+        int gauge = game.settings ? game.settings->gaugeScore : 0;
+        int stars = Progress_ReportStars(LevelMgr_CurrentStage0(), LevelMgr_CurrentLevel0(),
+                                         Statistics_Score(), gauge);
+
+        AutoTest_Event("LEVEL_STARS", "stars=%d score=%d gauge=%d stage=%d level=%d",
+                       stars, Statistics_Score(), gauge,
+                       LevelMgr_GetCurrentStage(), LevelMgr_GetCurrentLevelIndex());
+        AutoTest_Observe("last_stars", stars);
     }
 }
 
