@@ -54,8 +54,26 @@ if (${isBassFxFound} STREQUAL isBassFxFound-NOTFOUND)
 endif()
 
 find_package(EXPAT REQUIRED)
-find_package(SDL2 REQUIRED)
-find_package(SDL2_image REQUIRED)
+
+# SDL2 / SDL2_image：优先 CMake config（MSYS2/Homebrew 都有），找不到就退回 pkg-config。
+# ⚠️ Ubuntu 22.04 的 libsdl2-image-dev 不保证带 CMake config → CI 里 find_package 会失败。
+find_package(SDL2 QUIET)
+if (NOT SDL2_FOUND)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(SDL2_PC REQUIRED IMPORTED_TARGET sdl2)
+    add_library(SDL2::SDL2 ALIAS PkgConfig::SDL2_PC)
+    message(STATUS "SDL2: using pkg-config (no CMake config found)")
+endif()
+
+find_package(SDL2_image QUIET)
+if (NOT SDL2_image_FOUND)
+    if (NOT PkgConfig_FOUND)
+        find_package(PkgConfig REQUIRED)
+    endif()
+    pkg_check_modules(SDL2_IMAGE_PC REQUIRED IMPORTED_TARGET SDL2_image)
+    add_library(SDL2_image::SDL2_image ALIAS PkgConfig::SDL2_IMAGE_PC)
+    message(STATUS "SDL2_image: using pkg-config (no CMake config found)")
+endif()
 
 # SDL_ttf：优先用仓库内的 vendored 副本（external/SDL_ttf 是 gitlink，干净克隆里可能是空的），
 # 没有就退回系统库（发行版打包/CI 用 libsdl2-ttf-dev）。
