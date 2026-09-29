@@ -32,6 +32,7 @@
 
 private struct {
     int pane;
+    int hoverId;        // 当前悬停的按钮精灵 id（-1 = 无）——悬停音用（3.5）
 
     int stage;          // 0-based
     int selLevel;       // 0-based
@@ -76,6 +77,14 @@ private bool _ImageButton(int sprId, int sprHoverId, int x, int y, float scale) 
         menu.clicked = 1;
         HQC_DJ_PlaySound(Store_GetSoundByID(SND_BUTTON1));
         return true;
+    }
+
+    // 悬停音（3.5）：鼠标"刚进入"这个按钮时响一次（不是每帧都响）
+    if (inside && menu.hoverId != sprId) {
+        menu.hoverId = sprId;
+        HQC_DJ_PlaySound(Store_GetSoundByID(SND_BUTTON2));
+    } else if (!inside && menu.hoverId == sprId) {
+        menu.hoverId = -1;
     }
 
     return false;
@@ -544,6 +553,7 @@ private void _Load() {
     HQC_Log("SceneMenu: loading");
 
     menu.pane         = PANE_MAIN;
+    menu.hoverId      = -1;
     menu.stage        = Progress_GetCurrentStage();
     menu.selLevel     = Progress_GetCurrentLevel();
     menu.difficulty   = gGameOptions.difficulty;

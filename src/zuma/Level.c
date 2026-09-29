@@ -276,11 +276,50 @@ LevelGraphics* Level_GetGraphics(HLevel hlevel) {
 }
 
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// 双曲线关卡（ROADMAP 3.6）：Mirror Serpent 这类关卡的球链要走两条曲线
+//   全局 pos 的含义：0..lenA-1 在曲线 A 上，lenA..lenA+lenB-1 在曲线 B 上。
+//   这样球链物理、隧道标记、进洞判定全都不用改，只要坐标/方向/长度按"合并曲线"取。
+//   （素材：serpents 的 <Graphics curve="serpents-1" curve2="serpents-2">）
+// ═══════════════════════════════════════════════════════════════════════════════
+
+static int _CurveDots(Curve* c) {
+    return c ? (int)HQC_Container_VectorCount(c->dotList) : 0;
+}
+
+
+static int _CurveALen(Level* level) { return _CurveDots(level->curveA); }
+static int _CurveBLen(Level* level) { return _CurveDots(level->curveB); }
+
+
+// 把全局 pos 映射到 (具体曲线, 该曲线上的局部 pos)
+static void _MapCurve(Level* level, float pos, Curve** outCurve, float* outLocal) {
+    int lenA = _CurveALen(level);
+    int lenB = _CurveBLen(level);
+
+    if (lenB > 0 && pos >= (float)(lenA - 1)) {
+        *outCurve = level->curveB;
+        *outLocal = pos - (float)lenA;
+    } else {
+        *outCurve = level->curveA;
+        *outLocal = pos;
+    }
+
+    if (*outLocal < 0.0f) *outLocal = 0.0f;
+}
+
+
 int Level_GetCurveLength(HLevel hlevel) {
     Level* level = (Level*)hlevel;
     if (!level || !level->curveA) return 0;
 
-    return (int)HQC_Container_VectorCount(level->curveA->dotList);
+    int len = _CurveALen(level);
+
+    // 双曲线：球链总长 = A + B（进洞点在 B 的末端）
+    if (_CurveBLen(level) > 0)
+        len += _CurveBLen(level);
+
+    return len;
 }
 
 
@@ -290,11 +329,20 @@ v2f_t Level_GetCurveCoords(HLevel hlevel, float pos) {
     if (!level || !level->curveA)
         return v2f_t_default;
 
-    int len = Level_GetCurveLength(hlevel);
-    if ((int)pos > len-1) pos = len-1;
-    if (pos <= 0.0f) pos = 0.0f;
+    float local = 0.0f;
+    Curve* curve = NULL;
+    _MapCurve(level, pos, &curve, &local);
 
-    CurveDot* cdot = (CurveDot*)HQC_Container_VectorGet(level->curveA->dotList, (int)pos);
+    if (!curve) return v2f_t_default;
+
+    int dots = _CurveDots(curve);
+    if (dots <= 0) return v2f_t_default;
+
+    int idx = (int)local;
+    if (idx > dots - 1) idx = dots - 1;
+    if (idx < 0) idx = 0;
+
+    CurveDot* cdot = (CurveDot*)HQC_Container_VectorGet(curve->dotList, idx);
     v2f_t coords = { (cdot->x+104) * 1.5, cdot->y * 1.5 };
 
     return coords;
@@ -334,12 +382,20 @@ void Level_GetCurveFlags(HLevel hlevel, float pos, int* isTunnel, int* isTopPrio
 
     if (!level || !level->curveA) return;
 
-    int len = Level_GetCurveLength(hlevel);
-    int idx = (int)pos;
-    if (idx < 0) idx = 0;
-    if (idx > len-1) idx = len-1;
+    float local = 0.0f;
+    Curve* curve = NULL;
+    _MapCurve(level, pos, &curve, &local);
 
-    CurveDot* cdot = (CurveDot*)HQC_Container_VectorGet(level->curveA->dotList, idx);
+    if (!curve) return;
+
+    int dots = _CurveDots(curve);
+    if (dots <= 0) return;
+
+    int idx = (int)local;
+    if (idx < 0) idx = 0;
+    if (idx > dots - 1) idx = dots - 1;
+
+    CurveDot* cdot = (CurveDot*)HQC_Container_VectorGet(curve->dotList, idx);
 
     if (isTunnel)      *isTunnel = cdot->t1;
     if (isTopPriority) *isTopPriority = cdot->t2;

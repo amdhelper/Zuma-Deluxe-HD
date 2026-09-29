@@ -1,0 +1,10 @@
+道具图标素材（均为 CC0 / Public Domain，可商用、无需署名；此处署名是礼貌）
+
+bomb.png        来自 "CC0 Explosive Icons" (AntumDeluge 整理, 原作者 Chrisblue 等)
+                https://opengameart.org/content/cc0-explosive-icons  → 32x32/bomb_01_black.png
+slowdown.png    来自 "Game icons" (Kenney.nl, CC0)  backward.png（倒带 = 减速）
+pause.png       同上  pause.png
+accuracy.png    同上  target.png（靶心 = 精准）
+extra.png       同上  star.png（备用/奖励）
+
+许可见 https://creativecommons.org/publicdomain/zero/1.0/

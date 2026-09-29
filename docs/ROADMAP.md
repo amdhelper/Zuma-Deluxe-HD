@@ -129,10 +129,13 @@
   （Gauntlet 局切回 `MUS_GAUNTLET`）；期间每 50 帧一次 `SND_WARNING1`
 - 事件：`MUSIC near_hole=1 front=81%`
 
-### 3.5 音乐/音效状态机 🟡 部分完成
-- 已接：菜单 `MUS_MAIN_MENU`、关卡 `MUS_GAME`、接近洞 `MUS_NEAR_HOLE`、
-  通关 `MUS_WIN`、失败 `MUS_GAME_OVER`、Gauntlet `MUS_GAUNTLET`
-- 待办：按钮悬停音、宝石音、结束音的细节打磨（低优先）
+### 3.5 音乐/音效状态机 ✅
+- 已接：菜单 `MUS_MAIN_MENU`、关卡 `MUS_GAME`、接近洞 `MUS_NEAR_HOLE`、通关 `MUS_WIN`、
+  失败 `MUS_GAME_OVER`、Gauntlet `MUS_GAUNTLET`
+- 音效：按钮悬停（`SND_BUTTON2`，进入时响一次）、按钮按下（`SND_BUTTON1`）、
+  开火（`SND_FIREBALL1`）、爆炸（按连击变调 `PlaySoundPitch`）、宝石出现/消失/拾取、
+  警告（接近洞，每 50 帧）、道具（炸弹/减速/暂停/精准各自的音）、GAP BONUS、胜负吟唱
+- ⚠️ 无头环境（`ZUMA_NO_AUDIO`）听不到，只能做代码级核对 + 音效 id 是否注册/加载
 
 ### 3.6 Gauntlet 模式 ✅
 - 主菜单 Gauntlet → 4 档难度（兔/鹰/豹/太阳神，用已注册的按钮精灵），
@@ -154,11 +157,17 @@
   `CUTOUT_LAYERS declared=2 loaded=1 missing=1`，截图里 Cutout 区域平均 RGB (201,32,18)、
   偏红像素 100%（全屏均值 (115,90,55)）→ 位置换算与绘制都正确（临时文件已删）
 
-### 3.6 双曲线关卡 🟡 素材与解析就位，物理/渲染仍只用 A
-- `<Graphics ... curve2="serpents-2">` 已解析成 `curveBFile`，`Level_Load` 也会加载它；
-  serpents（Mirror Serpent）/snakepit/blackswirley 这类"曲线名带 -1/-2"的关卡现在路径正确
-  （旧代码把目录也拼成 serpents-1/ → 打开失败 → Gauntlet 随机跳关直接崩，CI 抓到）
-- ⬜ 待办：球链在 A↔B 之间切换的双曲线走法（原版 Mirror Serpent 的镜像路径）
+### 3.6 双曲线关卡 ✅（走法已实现）
+- 解析：`<Graphics ... curve="serpents-1" curve2="serpents-2">` → curveAFile/curveBFile
+- **走法**：全局球链坐标 `pos` 现在覆盖"合并曲线"——`0..lenA-1` 在 A 上、
+  `lenA..lenA+lenB-1` 在 B 上（`Level_GetCurveLength` 返回 A+B，
+  `Level_GetCurveCoords/_GetCurveFlags` 用 `_MapCurve` 做映射），
+  球链物理/隧道标记/进洞判定都不用改：**进洞点自动落在曲线 B 的末端**，这就是
+  Mirror Serpent 的"走完一条再拐到镜像路径"的手感
+- 实测：serpents 两条曲线都加载（2459 + 2493 dots）；无头跑 4000 帧
+  `front_progress_x1000=671`（67.1%）——单曲线时进度最多只能到 49.6%，
+  证明球链确实走上了曲线 B
+- ⬜ 美术：`serpentsT/M/B.png` 遮挡贴图缺失（见 3.7 说明）
 
 ---
 

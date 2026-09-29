@@ -797,8 +797,56 @@ static void _Ball_Draw(Ball* ball) {
 }
 
 
-// 道具图标：纯绘图原语（方/条/十字），一眼能分辨四种效果
+// 道具图标（3.1）：优先用 CC0 美术素材（content/images/powerups/，见该目录 CREDITS.txt），
+// 素材缺失时退回程序化画法。贴图按球的直径缩放到 ~26px。
+// ⚠️ 这 4 张贴图在整个进程生命周期内缓存（不释放）：静态指针可达，ASan/LSan 不会算泄漏。
+static HQC_Texture _bonusIconTex[4] = { NULL, NULL, NULL, NULL };
+static bool        _bonusIconTried[4] = { false, false, false, false };
+
+static const char* _BonusIconFile(int bonus) {
+    switch (bonus) {
+        case BONUS_EXPLOSION: return "images/powerups/bomb.png";
+        case BONUS_SLOWDOWN:  return "images/powerups/slowdown.png";
+        case BONUS_PAUSE:     return "images/powerups/pause.png";
+        case BONUS_ACCURACY:  return "images/powerups/accuracy.png";
+        default:              return NULL;
+    }
+}
+
+
+static HQC_Texture _BonusIconTexture(int bonus) {
+    if (bonus <= BONUS_NONE || bonus >= BONUS_COUNT) return NULL;
+
+    if (!_bonusIconTried[bonus]) {
+        _bonusIconTried[bonus] = true;
+
+        const char* file = _BonusIconFile(bonus);
+        if (file) _bonusIconTex[bonus] = HQC_Artist_LoadTexture(file);
+    }
+
+    return _bonusIconTex[bonus];
+}
+
+
+// 道具图标：优先贴图（CC0 素材），没有就退回几何图形
 static void _Ball_DrawBonusIcon(int bonus, float x, float y) {
+    HQC_Texture tex = _BonusIconTexture(bonus);
+
+    if (tex) {
+        int w = 0, h = 0;
+        HQC_Artist_GetTextureSize(tex, &w, &h);
+
+        if (w > 0 && h > 0) {
+            float scale = 26.0f / (float)(w > h ? w : h);   // 统一画成 26px
+
+            HQC_Artist_DrawSetScale(scale);
+            HQC_Artist_DrawTexture(tex, x, y);
+            HQC_Artist_DrawSetScale(1.0f);
+
+            return;
+        }
+    }
+
     switch (bonus) {
         case BONUS_EXPLOSION:   // 橙底黑心 = 炸弹
             HQC_Artist_SetColorHex(0xFF8000);

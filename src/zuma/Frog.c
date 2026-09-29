@@ -221,6 +221,10 @@ void Frog_Update(HFrog hfrog) {
 
         v2f_t ballPos = _Frog_GetBallPos(frog);
         BulletList_Add(frog->bulletList, frog->ballColor, ballPos, BULLET_SPEED, frog->angle);
+
+        // 发射音（3.5）：每次开火一声
+        HQC_DJ_PlaySound(Store_GetSoundByID(SND_FIREBALL1));
+
         _Frog_NextBall(frog);
 
         frog->ballExpand = 0;
