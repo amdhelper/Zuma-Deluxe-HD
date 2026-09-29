@@ -143,9 +143,22 @@
 - 事件：`GAUNTLET_START` / `GAUNTLET_WAVE wave=2 score=.. nextGauge=.. speedMul=..`
 - ⚠️ 双曲线（`LevelGraphics.curveBFile` 已解析但渲染/物理仍只用 A）⬜ 待办
 
-### 3.7 Cutout 图层 ⬜ 待办
-- `levels.xml` 里 17 个 `<Cutout>` 仍未解析/绘制（8 个关卡需要），
-  隧道遮挡目前只靠 `image-top` + t1/t2 分层
+### 3.7 Cutout 图层 ✅（代码完成；素材缺失，补图即生效）
+- `<Cutout image="left|right|tunnel.." pri=".." x=".." y=".."/>` 现在会解析（坐标与
+  TreasurePoint 同一换算 `(x+104)*1.5, y*1.5`），关卡加载时载入贴图，按 pri 从小到大
+  画在球链**之上**（`Level_DrawCutouts`，SceneGame 在球链/顶层贴图之后调用）
+- ⚠️ **素材现状**：`content/levels/*/` 里没有 `left.png / right.png / tunnel*.png /
+  serpentsT|M|B.png`（9 个关卡共声明 17 处 Cutout）→ 载入失败只记日志并跳过，不报错；
+  补上对应 png 即生效（锚点目前按"贴图中心 = x,y"处理，与 TreasurePoint 一致）
+- 验证（合成素材）：临时在 `build/bin/levels/underover/left.png` 放一张 200x200 半透明红 →
+  `CUTOUT_LAYERS declared=2 loaded=1 missing=1`，截图里 Cutout 区域平均 RGB (201,32,18)、
+  偏红像素 100%（全屏均值 (115,90,55)）→ 位置换算与绘制都正确（临时文件已删）
+
+### 3.6 双曲线关卡 🟡 素材与解析就位，物理/渲染仍只用 A
+- `<Graphics ... curve2="serpents-2">` 已解析成 `curveBFile`，`Level_Load` 也会加载它；
+  serpents（Mirror Serpent）/snakepit/blackswirley 这类"曲线名带 -1/-2"的关卡现在路径正确
+  （旧代码把目录也拼成 serpents-1/ → 打开失败 → Gauntlet 随机跳关直接崩，CI 抓到）
+- ⬜ 待办：球链在 A↔B 之间切换的双曲线走法（原版 Mirror Serpent 的镜像路径）
 
 ---
 
