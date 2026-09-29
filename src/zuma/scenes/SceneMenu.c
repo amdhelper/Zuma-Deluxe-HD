@@ -33,6 +33,7 @@
 private struct {
     int pane;
     int hoverId;        // 当前悬停的按钮精灵 id（-1 = 无）——悬停音用（3.5）
+    int boardDiff;      // Gauntlet 排行榜当前查看的难度（3.12）
 
     int stage;          // 0-based
     int selLevel;       // 0-based
@@ -184,8 +185,9 @@ private void _StartGauntletPane() {
     _SetPane(PANE_GAUNTLET);
 
     // 让自动测试能断言"排行榜面板被打开、榜上有几条"
-    AutoTest_Event("GAUNTLET_BOARD_VIEW", "entries=%d best=%d",
-                   Progress_GauntletCount(), Progress_GauntletBest());
+    AutoTest_Event("GAUNTLET_BOARD_VIEW", "diff=%d entries=%d best=%d total=%d",
+                   menu.boardDiff, Progress_GauntletCount(menu.boardDiff),
+                   Progress_GauntletBest(menu.boardDiff), Progress_GauntletTotalEntries());
 }
 
 private void _StartGauntletMode(int difficulty) {
@@ -333,35 +335,47 @@ private void _DrawAdventurePane() {
         }
 
         // 星级（ROADMAP 3.10）：格子正上方三颗方块，拿到=金色，没拿到=暗灰
-        // ⚠️ 必须显式把 alpha 拉回 1.0：预览/未解锁格子的绘制会留下 0.x 的 alpha，
-        //    否则这三颗方块会"画了但看不见"（FillRect 用的是当前 alpha）
+        // ⚠️ 必须显式把 alpha 拉回 1.0：预览/未解锁格子的绘制会留下 0.x 的 alpha
         HQC_Artist_DrawSetAlpha(1.0f);
 
         int stars = Progress_GetStars(menu.stage, i);
 
-        // 用文字星（*）而不是色块：文字走字体渲染路径，最稳
-        {
-            char starBuf[8];
-            int  k = 0;
-
-            for (; k < stars && k < 3; k++)
-                starBuf[k] = '*';
-
-            starBuf[k] = 0;
-
-            HQC_Artist_SetColorHex(stars > 0 ? 0xFFD24A : 0x9A9A9A);
-            HQC_Artist_DrawText(Store_GetFontByID(FONT_CANCUN_10),
-                                stars > 0 ? starBuf : ". . .",
-                                (float)x, (float)(y - cellH / 2 - 16));
-            HQC_Artist_SetColorHex(C_WHITE);
-        }
-
+        // 三颗方块：拿到=金色，没拿到=暗灰
         for (int s = 0; s < 3; s++) {
             float sx = (float)(x - 26 + s * 26);
             float sy = (float)(y - cellH / 2 - 16);
 
             HQC_Artist_SetColorHex(s < stars ? 0xFFD24A : 0x4A4A4A);
             HQC_Artist_FillRect(sx - 9, sy - 9, 18, 18);
+        }
+
+        HQC_Artist_SetColorHex(C_WHITE);
+
+        // 取证（自动测试）：把刚画出来的星标像素读回来。
+        // ⚠️ 不要用"截图 + 猜帧"验证 HUD/面板：菜单自动流程只给选关面板几帧，
+        //    截图经常采不到（踩过：A/B 截图全 0 差异，误判"没渲染"）。
+        //    SDL_RenderReadPixels 在同一帧内读，最可靠。
+        static int starPixelProbe = 0;
+
+        if (AutoTest_IsActive() && i == 0 && starPixelProbe < 1) {
+            starPixelProbe++;
+
+            char sample[256];
+            int  n = 0;
+
+            for (int dy = -10; dy <= 10; dy += 5) {
+                for (int dx = -30; dx <= 30; dx += 10) {
+                    unsigned char r = 0, g = 0, b = 0, a = 0;
+
+                    HQC_Artist_ReadPixel((float)(x + dx),
+                                         (float)(y - cellH / 2 - 16 + dy), &r, &g, &b, &a);
+
+                    n += snprintf(sample + n, sizeof(sample) - n, "%02X%02X%02X,", r, g, b);
+                }
+            }
+
+            AutoTest_Event("STAR_PIXEL", "stars=%d x=%d y=%d %s",
+                           stars, x, y - cellH / 2 - 16, sample);
         }
 
         HQC_Artist_SetColorHex(C_WHITE);
@@ -382,6 +396,26 @@ private void _DrawAdventurePane() {
                  st->id ? st->id : "?");
         HQC_Artist_SetColorHex(C_WHITE);
         HQC_Artist_DrawText(Store_GetFontByID(FONT_CANCUN_12), buff, 640, 500);
+    }
+
+    // 模式开关（ROADMAP 3.13）：Normal / Time Attack（点击切换）
+    {
+        bool modeHover = _MouseInRect(640, 578, 470, 40);
+
+        snprintf(buff, sizeof(buff), "Mode:  < %s >",
+                 gGameOptions.timed ? "Time Attack" : "Normal");
+
+        HQC_Artist_SetColorHex(modeHover ? C_YELLOW : C_WHITE);
+        HQC_Artist_DrawText(Store_GetFontByID(FONT_CANCUN_12), buff, 640, 578);
+
+        if (modeHover && !menu.clicked && HQC_Input_MouseLeftPressed()) {
+            menu.clicked = 1;
+            gGameOptions.timed = !gGameOptions.timed;
+
+            HQC_DJ_PlaySound(Store_GetSoundByID(SND_BUTTON1));
+
+            AutoTest_Event("MENU_MODE", "timed=%d", gGameOptions.timed);
+        }
     }
 
     // 难度（点击循环切换 4 档）
@@ -477,27 +511,66 @@ private void _DrawGauntletPane() {
         HQC_Artist_DrawText(Store_GetFontByID(FONT_CANCUN_8), kGauntletModes[i].desc, (float)x, (float)(y + 92));
     }
 
-    // ── 排行榜（ROADMAP 3.11）：前 5 名，分数降序（右侧一列）──────────────
-    HQC_Artist_SetColorHex(C_YELLOW);
-    HQC_Artist_DrawText(Store_GetFontByID(FONT_CANCUN_10), "BEST 5", 1140, 200);
+    // ── 排行榜（3.11 / 3.12）：分难度 4 张榜 + 可清榜（右侧一列）──────────
+    static const char* kDiffShort[4] = { "R", "E", "J", "S" };
 
-    int boardN = Progress_GauntletCount();
+    HQC_Artist_SetColorHex(C_YELLOW);
+    HQC_Artist_DrawText(Store_GetFontByID(FONT_CANCUN_10), "BEST 5", 1140, 148);
+
+    // 难度页签：Rabbit / Eagle / Jaguar / Sun God
+    for (int d = 0; d < 4; d++) {
+        float tx = (float)(1020 + d * 74);
+        bool  sel = (d == menu.boardDiff);
+        bool  hov = _MouseInRect((int)tx, 190, 60, 30);
+
+        snprintf(buff, sizeof(buff), "%s", kDiffShort[d]);
+
+        HQC_Artist_SetColorHex(sel ? C_YELLOW : (hov ? C_WHITE : 0x808080));
+        HQC_Artist_DrawText(Store_GetFontByID(FONT_CANCUN_10), buff, tx, 190);
+
+        if (hov && !menu.clicked && HQC_Input_MouseLeftPressed()) {
+            menu.clicked   = 1;
+            menu.boardDiff = d;
+
+            HQC_DJ_PlaySound(Store_GetSoundByID(SND_BUTTON1));
+            AutoTest_Event("GAUNTLET_BOARD_TAB", "difficulty=%d entries=%d",
+                           d, Progress_GauntletCount(d));
+        }
+    }
+
+    int boardN = Progress_GauntletCount(menu.boardDiff);
 
     if (boardN == 0) {
         HQC_Artist_SetColorHex(0x909090);
-        HQC_Artist_DrawText(Store_GetFontByID(FONT_CANCUN_8), "no runs yet", 1140, 240);
+        HQC_Artist_DrawText(Store_GetFontByID(FONT_CANCUN_8), "no runs yet", 1140, 230);
     } else {
         for (int i = 0; i < boardN; i++) {
-            const ProgressGauntletEntry* e = Progress_GauntletEntryAt(i);
+            const ProgressGauntletEntry* e = Progress_GauntletEntryAt(menu.boardDiff, i);
             if (!e) continue;
 
-            snprintf(buff, sizeof(buff), "%d. %d  W%d  %s", i + 1, e->score, e->wave,
-                     GameDifficulty_Name(e->difficulty));
+            snprintf(buff, sizeof(buff), "%d. %d  W%d", i + 1, e->score, e->wave);
 
             HQC_Artist_SetColorHex(i == 0 ? C_YELLOW : C_WHITE);
             HQC_Artist_DrawText(Store_GetFontByID(FONT_CANCUN_8), buff, 1140,
-                                (float)(240 + i * 42));
+                                (float)(232 + i * 40));
         }
+    }
+
+    // 清榜（只清当前难度）
+    bool clrHov = _MouseInRect(1140, 448, 210, 34);
+
+    HQC_Artist_SetColorHex(clrHov ? 0xFF9090 : 0xA07070);
+    HQC_Artist_DrawText(Store_GetFontByID(FONT_CANCUN_8), "Clear this board", 1140, 448);
+
+    if (clrHov && !menu.clicked && HQC_Input_MouseLeftPressed()) {
+        menu.clicked = 1;
+
+        Progress_GauntletClear(menu.boardDiff);
+        HQC_DJ_PlaySound(Store_GetSoundByID(SND_BUTTON1));
+
+        AutoTest_Event("GAUNTLET_BOARD_CLEAR", "difficulty=%d entries_now=%d total_now=%d",
+                       menu.boardDiff, Progress_GauntletCount(menu.boardDiff),
+                       Progress_GauntletTotalEntries());
     }
 
     if (_ImageButton(SPR_MENU_GAUNT_BTN_BACK, SPR_MENU_GAUNT_BTN_BACK_HOVER, 640, 600, 1.2f))
@@ -626,6 +699,7 @@ private void _Load() {
 
     menu.pane         = PANE_MAIN;
     menu.hoverId      = -1;
+    menu.boardDiff    = 0;
     menu.stage        = Progress_GetCurrentStage();
     menu.selLevel     = Progress_GetCurrentLevel();
     menu.difficulty   = gGameOptions.difficulty;

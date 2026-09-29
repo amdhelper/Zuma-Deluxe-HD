@@ -40,6 +40,9 @@ void GameOptions_SetDefaults() {
     gGameOptions.gauntletWave      = 1;
     gGameOptions.gauntletGauge     = 1500;
     gGameOptions.gauntletSpeedMul  = 1.0f;
+    gGameOptions.timed             = 0;
+    gGameOptions.timedLimit        = 0;
+    gGameOptions.clearBoard        = 0;
 }
 
 
@@ -121,6 +124,13 @@ void GameOptions_Parse(int argc, char** argv) {
             gGameOptions.seed = (unsigned int)strtoul(argv[++i], NULL, 10);
         } else if (_streq(a, "--gauntlet") && i + 1 < argc) {
             GameOptions_StartGauntlet(atoi(argv[++i]));
+        } else if (_streq(a, "--timed")) {
+            gGameOptions.timed = 1;                  // 限时挑战（3.13）
+        } else if (_streq(a, "--timed-seconds") && i + 1 < argc) {
+            gGameOptions.timed    = 1;               // 自定义限时秒数
+            gGameOptions.timedLimit = atoi(argv[++i]);
+        } else if (_streq(a, "--clear-board")) {
+            gGameOptions.clearBoard = 1;             // 清空 Gauntlet 排行榜
         } else {
             fprintf(stderr, "unknown option: %s (see --help)\n", a);
             exit(2);

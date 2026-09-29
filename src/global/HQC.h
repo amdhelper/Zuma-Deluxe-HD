@@ -118,6 +118,11 @@ HQC_Font    HQC_Artist_MakeFontFromTexture();
 // 把当前渲染结果存成 BMP（自动测试取证；配合 SDL_VIDEODRIVER=dummy 亦可）
 bool HQC_Artist_SaveScreenshot(const char* filepath, int width, int height);
 
+// 读回**已经画到画布上的**某个像素（取证用，SDL_RenderReadPixels 单像素）
+//   自动测试里用来回答"这个东西到底有没有画上去"，比截图猜帧可靠
+bool HQC_Artist_ReadPixel(float x, float y, unsigned char* r, unsigned char* g,
+                          unsigned char* b, unsigned char* a);
+
 void HQC_Artist_FreeFont(HQC_Font font);
 void HQC_Artist_SetImageFont(HQC_Font font);
 

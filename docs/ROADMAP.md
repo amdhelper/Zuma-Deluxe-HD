@@ -211,6 +211,29 @@
   且用 `prog.loaded` 守卫，避免在读档过程中反向写文件
 
 
+### 3.12 Gauntlet 排行榜：分难度 + 可清榜 ✅
+- 四个难度各一张前 5 榜（`gboard <难度> <分数> <目数> <秒>`；旧的 `gauntlet ...` 行仍兼容）
+- 菜单 Gauntlet 面板：页签 R/E/J/S 切换难度、显示该难度前 5、`Clear this board` 按钮清当前难度
+- 命令行 `--clear-board` 清空全部榜单（也方便自动测试断言）
+- 事件：`GAUNTLET_BOARD`(rank/score/wave/diff/entries/best)、`GAUNTLET_BOARD_TAB`、
+  `GAUNTLET_BOARD_CLEAR`、`GAUNTLET_BOARD_VIEW`
+- 实测：diff=0 打出 `rank=1 score=1620 wave=3 entries=1`；diff=2 打出 `rank=1 score=1600 wave=1`；
+  存档出现 `gboard 0 1620 3 47` / `gboard 2 1600 1 45`；`--clear-board` 后 gboard 行数 = 0
+
+### 3.13 限时挑战（Time Attack）✅
+- 选关界面 `Mode: < Normal / Time Attack >` 切换（也支持 `--timed`）
+- 规则：超过关卡 partTime 直接结束本局（事件 `TIMED_EXPIRE`）；提前打完按剩余秒数换分，
+  **每秒 25 分**（事件 `TIMED_BONUS`），加分计入本关成绩与星级
+- HUD 右上角显示 `TIME m:ss`（剩 25 秒内变黄、10 秒内变红并闪烁）
+- 实测：`TIMED_BONUS left=62 bonus=1550`（2187 → 3737 分，算术对得上）
+
+### 选关星标渲染：之前的"未确认"是**验证工具**的问题，不是 bug ✅
+- 排查结论：星标画得对。无头环境用「截图 + 猜帧」验证面板类 HUD 不可靠（菜单自动流程只给
+  选关面板几帧，A/B 截图全 0 差异，一度误判"没渲染"）；改用**同帧内 `SDL_RenderReadPixels`**
+  取样即可证明：`STAR_PIXEL stars=3 ... FFD24A,FFD24A,...`（金）/ `stars=0 ... 4A4A4A,...`（灰）
+- 新增 `HQC_Artist_ReadPixel()`（单像素读回，取证用），`STAR_PIXEL` 事件已留作回归自检
+
+
 ## 阶段 4 — 工程化与收尾（4.1/4.2/4.4/4.5/4.6 ✅；4.3 部分）
 
 - **4.1 内存 ✅**：ASan/LSan（`build-asan`，`-fsanitize=address,undefined`）跑两条自动测试路径

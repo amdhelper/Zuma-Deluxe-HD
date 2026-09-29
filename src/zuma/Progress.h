@@ -34,8 +34,9 @@ int  Progress_GetStars(int stage, int level);
 // （gaugeScore 来自关卡设置，已随难度不同；返回本次拿到的星数 1..3）
 int  Progress_ReportStars(int stage, int level, int score, int gaugeScore);
 
-// ── Gauntlet 排行榜（前 5 名，分数降序，同分比目数）─────────────────────────
-#define PROG_BOARD_SIZE 5
+// ── Gauntlet 排行榜（ROADMAP 3.11 / 3.12：分难度 + 可清榜）──────────────────
+#define PROG_BOARD_SIZE   5
+#define PROG_MAX_DIFF     4      // Rabbit / Eagle / Jaguar / Sun God
 
 typedef struct {
     int score;
@@ -44,12 +45,13 @@ typedef struct {
     int seconds;
 } ProgressGauntletEntry;
 
-int  Progress_GauntletCount(void);                                     // 榜上条目数（<=5）
-const ProgressGauntletEntry* Progress_GauntletEntryAt(int index);      // NULL = 越界
+int  Progress_GauntletCount(int difficulty);                            // 该难度榜上条目数
+const ProgressGauntletEntry* Progress_GauntletEntryAt(int difficulty, int index);
 int  Progress_GauntletSubmit(int score, int wave, int difficulty, int seconds);
                                                                        // 返回名次 1..5；未上榜 0
-int  Progress_GauntletBest(void);                                      // 榜首分数，0 = 空榜
-void Progress_GauntletClear(void);                                     // 清空榜单
+int  Progress_GauntletBest(int difficulty);                            // 该难度榜首分数，0 = 空榜
+void Progress_GauntletClear(int difficulty);                           // difficulty < 0 = 清全部
+int  Progress_GauntletTotalEntries(void);                              // 四个难度合计条目数
 
 const char* Progress_FilePath(void);
 

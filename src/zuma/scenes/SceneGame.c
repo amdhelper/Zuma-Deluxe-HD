@@ -199,16 +199,20 @@ static void _Game_BuildResultDialog() {
 
         if (rank > 0)
             snprintf(game.resultLines[7], 96, "Wave %d   Board #%d  (best %d)",
-                     gGameOptions.gauntletWave, rank, Progress_GauntletBest());
+                     gGameOptions.gauntletWave, rank,
+                     Progress_GauntletBest(gGameOptions.gauntletDifficulty));
         else
             snprintf(game.resultLines[7], 96, "Wave %d   Board --  (best %d)",
-                     gGameOptions.gauntletWave, Progress_GauntletBest());
+                     gGameOptions.gauntletWave,
+                     Progress_GauntletBest(gGameOptions.gauntletDifficulty));
 
         Dialogbox_AddTextEx(dlg, game.resultLines[7], 0, -24, C_YELLOW);
 
-        AutoTest_Event("GAUNTLET_BOARD", "rank=%d score=%d wave=%d entries=%d best=%d",
+        AutoTest_Event("GAUNTLET_BOARD", "rank=%d score=%d wave=%d diff=%d entries=%d best=%d",
                        rank, score, gGameOptions.gauntletWave,
-                       Progress_GauntletCount(), Progress_GauntletBest());
+                       gGameOptions.gauntletDifficulty,
+                       Progress_GauntletCount(gGameOptions.gauntletDifficulty),
+                       Progress_GauntletBest(gGameOptions.gauntletDifficulty));
     } else if (game.levelComplete) {
         snprintf(game.resultLines[7], 96, "Rating %d / 3 stars",
                  Progress_GetStars(stage, level));
@@ -541,6 +545,28 @@ static void _Game_CheckEnd() {
     if (game.levelComplete || game.gameOver)
         return;
 
+    // ── 限时挑战（ROADMAP 3.13）：超过限时就结束本局 ────────────
+    if (gGameOptions.timed) {
+        int limit = gGameOptions.timedLimit > 0
+                        ? gGameOptions.timedLimit
+                        : (game.settings ? game.settings->partTime : 0);
+
+        if (limit > 0 && game.levelFrames / 60 >= limit) {
+            game.levelSeconds = game.levelFrames / 60;
+            game.gameOver     = 1;
+            game.endTimer     = 60;
+
+            Store_PlayMusic(MUS_GAME_OVER);
+            HQC_DJ_PlaySound(Store_GetSoundByID(SND_CHANT8));
+
+            AutoTest_Event("TIMED_EXPIRE", "limit=%d used=%d score=%d stage=%d level=%d",
+                           limit, game.levelSeconds, Statistics_Score(),
+                           LevelMgr_GetCurrentStage(), LevelMgr_GetCurrentLevelIndex());
+            AutoTest_Observe("timed_expired", 1);
+            return;
+        }
+    }
+
     int chainEmpty  = BallChain_IsEmpty(game.chain);
     int endReached  = BallChain_IsEndReached(game.chain);
 
@@ -655,6 +681,20 @@ static void _Game_CheckEnd() {
                        stars, Statistics_Score(), gauge,
                        LevelMgr_GetCurrentStage(), LevelMgr_GetCurrentLevelIndex());
         AutoTest_Observe("last_stars", stars);
+
+        // 限时挑战（3.13）：提前完成 → 剩余秒数换分
+        if (gGameOptions.timed && game.settings && game.settings->partTime > 0) {
+            int left = game.settings->partTime - game.levelSeconds;
+
+            if (left > 0) {
+                int bonus = left * 25;
+
+                Statistics_AddScore(bonus);
+
+                AutoTest_Event("TIMED_BONUS", "left=%d bonus=%d score=%d",
+                               left, bonus, Statistics_Score());
+            }
+        }
     }
 }
 
@@ -1055,6 +1095,28 @@ static void _Game_DrawHUD() {
     }
 
     HQC_Texture hudTex = Store_GetTextureByID(TEX_GAME_HUD);
+
+    // 限时挑战（ROADMAP 3.13）：HUD 右上角显示剩余时间
+    if (gGameOptions.timed) {
+        int limit = gGameOptions.timedLimit > 0
+                        ? gGameOptions.timedLimit
+                        : (game.settings ? game.settings->partTime : 0);
+
+        int left = limit - (game.levelFrames / 60);
+        if (left < 0) left = 0;
+
+        snprintf(buff, sizeof(buff), "TIME %d:%02d", left / 60, left % 60);
+
+        // 剩 10 秒内变红并闪烁
+        uint32_t col = (left <= 10) ? C_RED : (left <= 25 ? C_YELLOW : C_GREEN);
+
+        if (left > 10 || (game.frame / 8) % 2 == 0) {
+            HQC_Artist_SetColorHex(col);
+            HQC_Artist_DrawText(Store_GetFontByID(FONT_CANCUN_10), buff, 1040, 20);
+        }
+
+        HQC_Artist_SetColorHex(C_WHITE);
+    }
 
     irect_t emptyRect = { 773, 28, 94, 27 };
     HQC_Artist_DrawTextureRect(hudTex, 820, 16, emptyRect);

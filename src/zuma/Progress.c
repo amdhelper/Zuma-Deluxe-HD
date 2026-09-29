@@ -35,9 +35,9 @@ static struct {
 
     unsigned char stars[PROG_MAX_STAGES][PROG_MAX_LEVELS];   // 0..3
 
-    // Gauntlet 排行榜（分数降序，最多 PROG_BOARD_SIZE 条）
-    int boardCount;
-    ProgressGauntletEntry board[PROG_BOARD_SIZE];
+    // Gauntlet 排行榜（每个难度一张榜，分数降序，最多 PROG_BOARD_SIZE 条）
+    int boardCount[PROG_MAX_DIFF];
+    ProgressGauntletEntry board[PROG_MAX_DIFF][PROG_BOARD_SIZE];
 
     int currentStage;
     int currentLevel;
@@ -134,9 +134,14 @@ void Progress_Load() {
             continue;
         }
 
-        // gauntlet <score> <wave> <difficulty> <seconds>
+        // gboard <difficulty> <score> <wave> <seconds>（3.12 起：分难度榜）
+        if (sscanf(line, "gboard %d %d %d %d", &s, &score, &l, &sec) == 4) {
+            Progress_GauntletSubmit(score, l, s, sec);
+            continue;
+        }
+
+        // gauntlet <score> <wave> <difficulty> <seconds>（v0.6.0 旧格式，继续兼容）
         if (sscanf(line, "gauntlet %d %d %d %d", &score, &s, &l, &sec) == 4) {
-            // 文件里的顺序可能是任意的（手改过也算）→ 走同一套插入逻辑保持有序
             Progress_GauntletSubmit(score, s, l, sec);
             continue;
         }
@@ -186,10 +191,12 @@ void Progress_Save() {
         }
     }
 
-    // Gauntlet 排行榜
-    for (int i = 0; i < prog.boardCount; i++) {
-        fprintf(f, "gauntlet %d %d %d %d\n", prog.board[i].score, prog.board[i].wave,
-                prog.board[i].difficulty, prog.board[i].seconds);
+    // Gauntlet 排行榜（每个难度一列）
+    for (int d = 0; d < PROG_MAX_DIFF; d++) {
+        for (int i = 0; i < prog.boardCount[d]; i++) {
+            fprintf(f, "gboard %d %d %d %d\n", d, prog.board[d][i].score,
+                    prog.board[d][i].wave, prog.board[d][i].seconds);
+        }
     }
 
     fclose(f);
@@ -326,27 +333,57 @@ int Progress_ReportStars(int stage, int level, int score, int gaugeScore) {
 // Gauntlet 排行榜（ROADMAP 3.11）
 ////////////////////////////////////////////////////////////////////////////////
 
-int Progress_GauntletCount() {
-    return prog.boardCount;
+int Progress_GauntletCount(int difficulty) {
+    if (difficulty < 0 || difficulty >= PROG_MAX_DIFF)
+        return 0;
+
+    return prog.boardCount[difficulty];
 }
 
 
-const ProgressGauntletEntry* Progress_GauntletEntryAt(int index) {
-    if (index < 0 || index >= prog.boardCount)
+const ProgressGauntletEntry* Progress_GauntletEntryAt(int difficulty, int index) {
+    if (difficulty < 0 || difficulty >= PROG_MAX_DIFF)
         return NULL;
 
-    return &prog.board[index];
+    if (index < 0 || index >= prog.boardCount[difficulty])
+        return NULL;
+
+    return &prog.board[difficulty][index];
 }
 
 
-int Progress_GauntletBest() {
-    return prog.boardCount > 0 ? prog.board[0].score : 0;
+int Progress_GauntletBest(int difficulty) {
+    if (difficulty < 0 || difficulty >= PROG_MAX_DIFF || prog.boardCount[difficulty] == 0)
+        return 0;
+
+    return prog.board[difficulty][0].score;
 }
 
 
-void Progress_GauntletClear() {
-    prog.boardCount = 0;
-    memset(prog.board, 0, sizeof(prog.board));
+int Progress_GauntletTotalEntries() {
+    int total = 0;
+
+    for (int d = 0; d < PROG_MAX_DIFF; d++)
+        total += prog.boardCount[d];
+
+    return total;
+}
+
+
+void Progress_GauntletClear(int difficulty) {
+    for (int d = 0; d < PROG_MAX_DIFF; d++) {
+        if (difficulty >= 0 && d != difficulty)
+            continue;
+
+        prog.boardCount[d] = 0;
+        memset(prog.board[d], 0, sizeof(prog.board[d]));
+    }
+
+    HQC_Log("Progress: gauntlet board cleared (%s)",
+            difficulty < 0 ? "all difficulties" : "one difficulty");
+
+    if (prog.loaded)
+        Progress_Save();
 }
 
 
@@ -354,12 +391,18 @@ int Progress_GauntletSubmit(int score, int wave, int difficulty, int seconds) {
     if (score <= 0)
         return 0;
 
-    // 找插入位置：分数降序；同分则目数多的排前面
-    int pos = prog.boardCount;
+    if (difficulty < 0) difficulty = 0;
+    if (difficulty >= PROG_MAX_DIFF) difficulty = PROG_MAX_DIFF - 1;
 
-    for (int i = 0; i < prog.boardCount; i++) {
-        if (score > prog.board[i].score ||
-            (score == prog.board[i].score && wave > prog.board[i].wave)) {
+    int*                count = &prog.boardCount[difficulty];
+    ProgressGauntletEntry* row = prog.board[difficulty];
+
+    // 找插入位置：分数降序；同分则目数多的排前面
+    int pos = *count;
+
+    for (int i = 0; i < *count; i++) {
+        if (score > row[i].score ||
+            (score == row[i].score && wave > row[i].wave)) {
             pos = i;
             break;
         }
@@ -369,18 +412,18 @@ int Progress_GauntletSubmit(int score, int wave, int difficulty, int seconds) {
     if (pos >= PROG_BOARD_SIZE)
         return 0;
 
-    int last = prog.boardCount < PROG_BOARD_SIZE ? prog.boardCount : PROG_BOARD_SIZE - 1;
+    int last = *count < PROG_BOARD_SIZE ? *count : PROG_BOARD_SIZE - 1;
 
     for (int i = last; i > pos; i--)
-        prog.board[i] = prog.board[i - 1];
+        row[i] = row[i - 1];
 
-    prog.board[pos].score      = score;
-    prog.board[pos].wave       = wave;
-    prog.board[pos].difficulty = difficulty;
-    prog.board[pos].seconds    = seconds;
+    row[pos].score      = score;
+    row[pos].wave       = wave;
+    row[pos].difficulty = difficulty;
+    row[pos].seconds    = seconds;
 
-    if (prog.boardCount < PROG_BOARD_SIZE)
-        prog.boardCount++;
+    if (*count < PROG_BOARD_SIZE)
+        (*count)++;
 
     // 落盘（Load 期间 prog.loaded 还是 0 → 不会在读取时写回文件）
     if (prog.loaded)

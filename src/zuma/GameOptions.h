@@ -29,6 +29,11 @@ typedef struct GameOptions {
     int gauntletWave;        // 当前目数（从 1 开始）
     int gauntletGauge;       // 本目需要打到的分数
     float gauntletSpeedMul;  // 球速倍率（每周目递增）
+
+    // 限时挑战（ROADMAP 3.13）
+    int timed;               // 1 = 限时模式：超过关卡 partTime 就结束本局
+    int timedLimit;          // >0 = 覆盖关卡 partTime（自定义限时秒数，测试/自定义用）
+    int clearBoard;          // 1 = 启动时清空 Gauntlet 排行榜（--clear-board）
 } GameOptions;
 
 extern GameOptions gGameOptions;

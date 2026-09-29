@@ -451,6 +451,30 @@ bool HQC_Artist_SaveScreenshot(const char* filepath, int width, int height) {
 }
 
 
+bool HQC_Artist_ReadPixel(float x, float y, unsigned char* r, unsigned char* g,
+                          unsigned char* b, unsigned char* a) {
+    if (!graphics.render)
+        return false;
+
+    float sx = 1.0f, sy = 1.0f;
+    SDL_RenderGetScale(graphics.render, &sx, &sy);
+
+    SDL_Rect rect = { (int)(x * sx), (int)(y * sy), 1, 1 };
+    uint32_t pixel = 0;
+
+    if (SDL_RenderReadPixels(graphics.render, &rect, SDL_PIXELFORMAT_ARGB8888,
+                             &pixel, 4) != 0)
+        return false;
+
+    if (a) *a = (unsigned char)((pixel >> 24) & 0xFF);
+    if (r) *r = (unsigned char)((pixel >> 16) & 0xFF);
+    if (g) *g = (unsigned char)((pixel >> 8) & 0xFF);
+    if (b) *b = (unsigned char)(pixel & 0xFF);
+
+    return true;
+}
+
+
 ///////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////
 

@@ -120,6 +120,12 @@ static void _Start(void) {
     // 进度存档（ROADMAP 2.4）：解锁进度 / 最高分 / 最佳用时
     Progress_Load();
 
+    // --clear-board：清空 Gauntlet 排行榜（ROADMAP 3.12）
+    if (gGameOptions.clearBoard) {
+        Progress_GauntletClear(-1);
+        HQC_Log("Application: gauntlet leaderboard cleared (--clear-board)");
+    }
+
     // 起始大关/小关（1-based → 内部 0-based）
     LevelMgr_Reset();
 
